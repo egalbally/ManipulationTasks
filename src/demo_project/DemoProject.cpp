@@ -35,6 +35,8 @@ void DemoProject::readRedisValues() {
 	kv_ori_ = stoi(redis_.get(KEY_KV_ORIENTATION));
 	kp_joint_ = stoi(redis_.get(KEY_KP_JOINT));
 	kv_joint_ = stoi(redis_.get(KEY_KV_JOINT));
+	kp_joint_init_ = stoi(redis_.get(KEY_KP_JOINT_INIT));
+	kv_joint_init_ = stoi(redis_.get(KEY_KV_JOINT_INIT));
 }
 
 /**
@@ -79,16 +81,29 @@ void DemoProject::updateModel() {
  * Controller to initialize robot to desired joint position.
  */
 DemoProject::ControllerStatus DemoProject::computeJointSpaceControlTorques() {
+	try {
+		int flag = stoi(redis_.get(KEY_UI_FLAG));
+		if (flag) return FINISHED;	
+	} catch (std::exception& e) {
+		cout << e.what() << endl;
+	}
+	return RUNNING;
+
 	// Finish if the robot has converged to q_initial
 	Eigen::VectorXd q_err = robot->_q - q_des_;
-	Eigen::VectorXd dq_err = robot->_dq - dq_des_;
-	if (q_err.norm() < kToleranceInitQ && dq_err.norm() < kToleranceInitDq) {
+	dq_des_ = -(kp_joint_init_ / kv_joint_init_) * q_err;
+	double v = kMaxVelocity / dq_des_.norm();
+	if (v > 1) v = 1;
+	Eigen::VectorXd dq_err = robot->_dq - v * dq_des_;
+	std::cout << q_err.transpose() << " " << q_err.norm() << " " << robot->_dq.norm() << std::endl;
+	// Eigen::VectorXd dq_err = robot->_dq - dq_des_;
+	if (q_err.norm() < kToleranceInitQ && robot->_dq.norm() < kToleranceInitDq) {
 		return FINISHED;
 	}
 
 	// Compute torques
-	Eigen::VectorXd ddq = -kp_joint_ * q_err - kv_joint_ * dq_err;
-	command_torques_ = robot->_M * ddq + g_;
+	Eigen::VectorXd ddq = -kv_joint_init_ * dq_err;
+	command_torques_ = robot->_M * ddq;
 	return RUNNING;
 }
 
@@ -116,8 +131,80 @@ DemoProject::ControllerStatus DemoProject::computeOperationalSpaceControlTorques
 	// Control torques
 	Eigen::Vector3d F_x = Lambda_x_ * ddx;
 	Eigen::VectorXd F_posture = robot->_M * ddq;
-	command_torques_ = Jv_.transpose() * F_x + N_.transpose() * F_posture + g_;
+	command_torques_ = Jv_.transpose() * F_x + N_.transpose() * F_posture;
 
+	return RUNNING;
+}
+
+/**
+ * DemoProject::screwBottleCap()
+ * ----------------------------------------------------
+ * Controller to move end effector to desired position.
+ */
+DemoProject::ControllerStatus DemoProject::screwBottleCap() {
+	// PD position control with velocity saturation
+	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.1));
+	Eigen::Vector3d x_err = x_ - x_des_;
+	Eigen::Vector3d dx_err = dx_ - dx_des_;
+	Eigen::Vector3d ddx = -kv_pos_ * x_err - kv_joint_ * dx_err;
+
+	// Nullspace posture control and damping
+	Eigen::VectorXd q_err = Eigen::VectorXd::Zero(KukaIIWA::DOF);
+	q_err(6) = robot->_q(6) - (KukaIIWA::JOINT_LIMITS(6) - 15.0 * M_PI / 180.0);
+	dq_des_ = -(kp_joint_ / kv_joint_) * q_err;
+	double v = kMaxVelocity / dq_des_.norm();
+	if (v > 1) v = 1;
+	Eigen::VectorXd dq_err = robot->_dq - v * dq_des_;
+	Eigen::VectorXd ddq = -kv_joint_ * dq_err;
+
+	// Control torques
+	Eigen::Vector3d F_x = Lambda_x_ * ddx;
+	Eigen::VectorXd F_joint = robot->_M * ddq;
+	command_torques_ = Jv_.transpose() * F_x + N_.transpose() * F_joint;
+
+	return RUNNING;
+}
+
+DemoProject::ControllerStatus DemoProject::rewindBottleCap() {
+	// PD position control with velocity saturation
+	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.1));
+	Eigen::Vector3d x_err = x_ - x_des_;
+	Eigen::Vector3d dx_err = dx_ - dx_des_;
+	Eigen::Vector3d ddx = -kv_pos_ * x_err - kv_joint_ * dx_err;
+
+	// Nullspace posture control and damping
+	Eigen::VectorXd q_err = Eigen::VectorXd::Zero(KukaIIWA::DOF);
+	q_err(6) = robot->_q(6) - (-KukaIIWA::JOINT_LIMITS(6) + 15.0 * M_PI / 180.0);
+	if (q_err.norm() < 0.1) return FINISHED;
+
+	dq_des_ = -(kp_joint_ / kv_joint_) * q_err;
+	double v = kMaxVelocity / dq_des_.norm();
+	if (v > 1) v = 1;
+	Eigen::VectorXd dq_err = robot->_dq - v * dq_des_;
+	Eigen::VectorXd ddq = -kv_joint_ * dq_err;
+
+	// Control torques
+	Eigen::Vector3d F_x = Lambda_x_ * ddx;
+	Eigen::VectorXd F_joint = robot->_M * ddq;
+	command_torques_ = Jv_.transpose() * F_x + N_.transpose() * F_joint;
+
+	return RUNNING;
+}
+
+DemoProject::ControllerStatus DemoProject::alignBottleCap() {
+	// PD position control with velocity saturation
+	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.1));
+	Eigen::Vector3d x_err = x_ - x_des_;
+	Eigen::Vector3d dx_err = dx_ - dx_des_;
+	Eigen::Vector3d ddx = -kv_pos_ * x_err - kv_joint_ * dx_err;
+	
+	// Nullspace damping	
+	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
+
+	// Control torques
+	Eigen::Vector3d F_x = Lambda_x_ * ddx;
+	Eigen::VectorXd F_joint = robot->_M * ddq;
+	command_torques_ = Jv_.transpose() * F_x + N_.transpose() * F_joint;
 	return RUNNING;
 }
 
@@ -144,6 +231,9 @@ void DemoProject::initialize() {
 	redis_.set(KEY_KV_ORIENTATION, to_string(kv_ori_));
 	redis_.set(KEY_KP_JOINT, to_string(kp_joint_));
 	redis_.set(KEY_KV_JOINT, to_string(kv_joint_));
+	redis_.set(KEY_KP_JOINT_INIT, to_string(kp_joint_init_));
+	redis_.set(KEY_KV_JOINT_INIT, to_string(kv_joint_init_));
+	redis_.set(KEY_UI_FLAG, to_string(0));
 }
 
 /**
@@ -182,14 +272,30 @@ void DemoProject::runLoop() {
 			// Initialize robot to default joint configuration
 			case JOINT_SPACE_INITIALIZATION:
 				if (computeJointSpaceControlTorques() == FINISHED) {
-					cout << "Joint position initialized. Switching to operational space controller." << endl;
-					controller_state_ = DemoProject::OP_SPACE_POSITION_CONTROL;
+					cout << "Joint position initialized. Switching to align bottle cap." << endl;
+					controller_state_ = DemoProject::ALIGN_BOTTLE_CAP;
+					q_des_ = robot->_q;
+					q_des_(6) = KukaIIWA::JOINT_LIMITS(6);
 				};
+				break;
+			// Control end effector to desired position
+			case ALIGN_BOTTLE_CAP:
+				if (alignBottleCap() == FINISHED) {
+					cout << "Bottle cap aligned. Switching to rewind cap." << endl;
+					controller_state_ = SCREW_BOTTLE_CAP;
+				}
+				break;
+			// Control end effector to desired position
+			case REWIND_BOTTLE_CAP:
+				if (rewindBottleCap() == FINISHED) {
+					cout << "Bottle cap rewound. Switching to screw bottle cap." << endl;
+					controller_state_ = SCREW_BOTTLE_CAP;
+				}
 				break;
 
 			// Control end effector to desired position
-			case OP_SPACE_POSITION_CONTROL:
-				computeOperationalSpaceControlTorques();
+			case SCREW_BOTTLE_CAP:
+				screwBottleCap();
 				break;
 
 			// Invalid state. Zero torques and exit program.

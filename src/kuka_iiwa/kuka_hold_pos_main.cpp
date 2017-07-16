@@ -12,6 +12,14 @@
 static volatile bool g_runloop = true;
 void stop(int signal){ g_runloop = false; }
 
+static void setCtrlCHandler(void (*userCallback)(int)) {
+	struct sigaction sigIntHandler;
+	sigIntHandler.sa_handler = userCallback;
+	sigemptyset(&sigIntHandler.sa_mask);
+	sigIntHandler.sa_flags = 0;
+	sigaction(SIGINT, &sigIntHandler, NULL);
+}
+
 const std::string kWorldFile = "resources/kuka_hold_pos/world.urdf";
 const std::string kRobotFile = "resources/kuka_hold_pos/kuka_iiwa.urdf";
 const std::string kRobotName = "Kuka-IIWA";
@@ -29,9 +37,7 @@ int main() {
 	redis.connect();
 
 	// Set up signal handler
-	signal(SIGABRT, &stop);
-	signal(SIGTERM, &stop);
-	signal(SIGINT, &stop);
+	setCtrlCHandler(stop);
 
 	// Load robot
 	auto robot = new Model::ModelInterface(kRobotFile, Model::rbdl, Model::urdf, true);

@@ -24,8 +24,11 @@ Author: Toki Migimatsu <takatoki@stanford.edu>
 #ifndef KUKA_IIWA_REDIS_DRIVER_H
 #define KUKA_IIWA_REDIS_DRIVER_H
 
+#ifdef BUILD_DRIVER
 #include "friLBRClient.h"
 #include "ButterworthFilter.h"
+#endif  // BUILD_DRIVER
+
 #include "redis/RedisClient.h"
 
 #include <string>
@@ -51,7 +54,7 @@ namespace KukaIIWA {
 const int DEFAULT_PORT = 30200;
 
 // Kuka degrees of freedom
-const int DOF = KUKA::FRI::LBRState::NUMBER_OF_JOINTS;
+const int DOF = 7;
 
 // Path to the urdf model and tool file
 const char MODEL_FILENAME[] = "resources/kuka_iiwa_driver/kuka_iiwa.urdf";
@@ -90,6 +93,7 @@ const double POS_WRIST_LIMITS[2] = {0.45, 1.05};
 
 }
 
+#ifdef BUILD_DRIVER
 namespace KUKA {
 namespace FRI {
 
@@ -217,5 +221,6 @@ protected:
 
 } //namespace FRI
 } //namespace KUKA
+#endif  // BUILD_DRIVER
 
 #endif  // KUKA_IIWA_REDIS_DRIVER_H

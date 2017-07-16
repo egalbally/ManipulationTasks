@@ -4,6 +4,7 @@
 // CS225a
 #include "redis/RedisClient.h"
 #include "timer/LoopTimer.h"
+#include "kuka_iiwa/RedisDriver.h"
 
 // Standard
 #include <string>
@@ -34,6 +35,9 @@ public:
 		KEY_KV_ORIENTATION  (kRedisKeyPrefix + robot_name + "::tasks::kv_ori"),
 		KEY_KP_JOINT        (kRedisKeyPrefix + robot_name + "::tasks::kp_joint"),
 		KEY_KV_JOINT        (kRedisKeyPrefix + robot_name + "::tasks::kv_joint"),
+		KEY_KP_JOINT_INIT   (kRedisKeyPrefix + robot_name + "::tasks::kp_joint_init"),
+		KEY_KV_JOINT_INIT   (kRedisKeyPrefix + robot_name + "::tasks::kv_joint_init"),
+		KEY_UI_FLAG         (kRedisKeyPrefix + robot_name + "::ui::flag"),
 		command_torques_(dof),
 		Jv_(3, dof),
 		N_(dof, dof),
@@ -46,7 +50,8 @@ public:
 		command_torques_.setZero();
 
 		// Home configuration for Kuka iiwa
-		q_des_ << 90, -30, 0, 60, 0, -90, -60;
+		// q_des_ << 90, -30, 0, 60, 0, -90, 0;
+		q_des_ << 90, -30, 0, 60, 0, -90, -90;
 		q_des_ *= M_PI / 180.0;
 		dq_des_.setZero();
 
@@ -68,7 +73,9 @@ protected:
 	enum ControllerState {
 		REDIS_SYNCHRONIZATION,
 		JOINT_SPACE_INITIALIZATION,
-		OP_SPACE_POSITION_CONTROL
+		ALIGN_BOTTLE_CAP,
+		REWIND_BOTTLE_CAP,
+		SCREW_BOTTLE_CAP
 	};
 
 	// Return values from computeControlTorques() methods
@@ -80,9 +87,9 @@ protected:
 	/***** Constants *****/
 
 	const int dof;  // Initialized with robot model
-	const double kToleranceInitQ  = 0.1;  // Joint space initialization tolerance
+	const double kToleranceInitQ  = 0.5;  // Joint space initialization tolerance
 	const double kToleranceInitDq = 0.1;  // Joint space initialization tolerance
-	const double kMaxVelocity = 0.5;  // Maximum end effector velocity
+	const double kMaxVelocity = 3;  // Maximum end effector velocity
 
 	const int kControlFreq = 1000;         // 1 kHz control loop
 	const int kInitializationPause = 1e6;  // 1ms pause before starting control loop
@@ -106,6 +113,9 @@ protected:
 	const std::string KEY_KV_ORIENTATION;
 	const std::string KEY_KP_JOINT;
 	const std::string KEY_KV_JOINT;
+	const std::string KEY_KP_JOINT_INIT;
+	const std::string KEY_KV_JOINT_INIT;
+	const std::string KEY_UI_FLAG;
 
 	/***** Member functions *****/
 
@@ -114,6 +124,9 @@ protected:
 	void writeRedisValues();
 	ControllerStatus computeJointSpaceControlTorques();
 	ControllerStatus computeOperationalSpaceControlTorques();
+	ControllerStatus alignBottleCap();
+	ControllerStatus screwBottleCap();
+	ControllerStatus rewindBottleCap();
 
 	/***** Member variables *****/
 
@@ -146,8 +159,10 @@ protected:
 	double kv_pos_ = 10;
 	double kp_ori_ = 40;
 	double kv_ori_ = 10;
-	double kp_joint_ = 40;
-	double kv_joint_ = 10;
+	double kp_joint_init_ = 10;
+	double kv_joint_init_ = 4;
+	double kp_joint_ = 15;
+	double kv_joint_ = 4;
 };
 
 #endif  // DEMO_PROJECT_H

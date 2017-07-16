@@ -223,8 +223,13 @@ int main(int argc, char** argv) {
     while (!glfwWindowShouldClose(window))
 	{
 		// read from Redis
-		robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
-		robot->_dq = redis_client.getEigenMatrix(JOINT_VELOCITIES_KEY);
+		try {
+			robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
+			robot->_dq = redis_client.getEigenMatrix(JOINT_VELOCITIES_KEY);
+		} catch (std::exception& e) {
+			std::cout << e.what() << " Waiting..." << std::endl;
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+		}
 
 #ifdef ENABLE_TRAJECTORIES
 		/********** Begin Custom Visualizer Code **********/
