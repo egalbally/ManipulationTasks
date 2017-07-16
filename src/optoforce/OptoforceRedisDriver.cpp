@@ -3,7 +3,7 @@
  * it will create a connection, read the data, transfer the data from count value to real units
  * and publish it in redis with a key named "sai2::optoforceSensor::6Dsensor::force"
  */
-
+#include "optoforceRedisDriver.h"
 
 #include <iostream>
 #include <fstream>
@@ -15,11 +15,6 @@
 #include "omd/sensorconfig.h"
 #include "omd/optopackage.h"
 #include "filters/ButterworthFilter.h"
-
-// For redis publication
-#include "redis/RedisClient.h"
-
-const std::string EE_FORCE_SENSOR_FORCE_KEY = "sai2::optoforceSensor::6Dsensor::force";
 
 typedef unsigned long long mytime_t;
 
@@ -288,12 +283,8 @@ void processRaw3DSensorData(const OptoPackage& optoPackage, Eigen::VectorXd& dat
 void Run3DSensorExample(OptoDAQ & p_optoDAQ)
 {
 	// start redis client
-	HiredisServerInfo info;
-	info.hostname_ = "127.0.0.1";
-	info.port_ = 6379;
-	info.timeout_ = { 1, 500000 }; // 1.5 seconds
-	auto redis_client = CDatabaseRedisClient();
-	redis_client.serverIs(info);
+	RedisClient redis_client;
+	redis_client.connect();
 
     if(use_filter)
     {
@@ -340,7 +331,7 @@ void Run3DSensorExample(OptoDAQ & p_optoDAQ)
 		}
 
 		//send to redis
-		redis_client.setEigenMatrixDerived(EE_FORCE_SENSOR_FORCE_KEY, force_filtered);
+		redis_client.setEigenMatrix(Optoforce::KEY_3D_SENSOR_FORCE, force_filtered);
 	}
 
 }
@@ -348,12 +339,8 @@ void Run3DSensorExample(OptoDAQ & p_optoDAQ)
 void Run6DSensorExample(OptoDAQ & p_optoDAQ)
 {
 	// start redis client
-	HiredisServerInfo info;
-	info.hostname_ = "127.0.0.1";
-	info.port_ = 6379;
-	info.timeout_ = { 1, 500000 }; // 1.5 seconds
-	auto redis_client = CDatabaseRedisClient();
-	redis_client.serverIs(info);
+	RedisClient redis_client;
+	redis_client.connect();
 
     if(use_filter)
     {
@@ -408,7 +395,7 @@ void Run6DSensorExample(OptoDAQ & p_optoDAQ)
 
 
 		// publish to redis
-		redis_client.setEigenMatrixDerived(EE_FORCE_SENSOR_FORCE_KEY, force_filtered);
+		redis_client.setEigenMatrix(KEY_6D_SENSOR_FORCE, force_filtered);
 
 		counter++;
 
