@@ -82,9 +82,11 @@ set (CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG          ${PROJECT_SOURCE_DIR}/bin)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL     ${PROJECT_SOURCE_DIR}/bin)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE        ${PROJECT_SOURCE_DIR}/bin)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${PROJECT_SOURCE_DIR}/bin)
-set (CS327A_BINARY_DIR ${PROJECT_SOURCE_DIR}/bin)
+set (CS225A_BINARY_DIR ${PROJECT_SOURCE_DIR}/bin)
 
 add_subdirectory(src/visualization)
-#add_subdirectory(src/optiTrack)
+add_subdirectory(src/simulation)
+add_subdirectory(src/demo_project)
+add_subdirectory(src/kuka_iiwa)
 add_subdirectory(screwCapTask)
 

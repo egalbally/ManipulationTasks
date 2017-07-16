@@ -35,20 +35,6 @@ void DemoProject::readRedisValues() {
 	kv_ori_ = stoi(redis_.get(KEY_KV_ORIENTATION));
 	kp_joint_ = stoi(redis_.get(KEY_KP_JOINT));
 	kv_joint_ = stoi(redis_.get(KEY_KV_JOINT));
-
-	// Read frames from OptiTrackClient
-	if (!optitrack_.getFrame()) return;
-
-	cout << "Timestamp: " << optitrack_.frameTime() << endl;
-	cout << "Rigid body positions:" << endl;
-	for (auto& pos : optitrack_.pos_rigid_bodies_) {
-		cout << '\t' << pos.transpose() << endl;
-	}
-	cout << "Marker positions:" << endl;
-	for (auto& pos : optitrack_.pos_single_markers_) {
-		cout << '\t' << pos.transpose() << endl;
-	}
-	cout << endl;
 }
 
 /**
@@ -150,10 +136,6 @@ void DemoProject::initialize() {
 	// Start redis client
 	// Make sure redis-server is running at localhost with default port 6379
 	redis_.connect(kRedisHostname, kRedisPort);
-
-	// Set up optitrack
-	// optitrack_.openConnection("123.45.67.89");
-	optitrack_.openCsv("../resources/optitrack_120.csv");
 
 	// Set gains in Redis if not initialized
 	redis_.set(KEY_KP_POSITION, to_string(kp_pos_));

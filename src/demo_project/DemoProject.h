@@ -4,7 +4,6 @@
 // CS225a
 #include "redis/RedisClient.h"
 #include "timer/LoopTimer.h"
-#include "optitrack/OptiTrackClient.h"
 
 // Standard
 #include <string>
@@ -128,9 +127,6 @@ protected:
 	LoopTimer timer_;
 	double t_curr_;
 	uint64_t controller_counter_ = 0;
-
-	// OptiTrack
-	OptiTrackClient optitrack_;
 
 	// State machine
 	ControllerState controller_state_;
