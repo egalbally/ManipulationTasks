@@ -1,0 +1,28 @@
+<?xml version="1.0" ?>
+
+<world name="demo_world" gravity="0.0 0.0 -9.8">
+
+	<robot name="kuka_iiwa">
+		<!-- model node is required -->
+		<model dir="resources/hw3" path="kuka_iiwa.urdf" name="kuka_iiwa" />
+		<!-- origin node is optional -->
+		<origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	</robot>
+
+	<light name="light1" type="directional">
+		<position xyz="0.0 -6.0 6.0" />
+		<lookat xyz="0.0 0.0 0.0" />
+	</light>
+
+	<light name="light2" type="directional">
+		<position xyz="0.0 6.0 6.0" />
+		<lookat xyz="0.0 0.0 0.0" />
+	</light>
+
+	<camera name="camera_fixed">
+		<position xyz="0.0 -2.0 2.0" />
+		<vertical xyz="0.0 0.0 1.0" />
+		<lookat xyz="0.0 0.0 1.5" />
+	</camera>
+
+</world>

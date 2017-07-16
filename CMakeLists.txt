@@ -12,7 +12,7 @@ include_directories(/usr/include /usr/local/include)
 set (ManipulationTasks_COMMON_SOURCE
 	${PROJECT_SOURCE_DIR}/src/redis/RedisClient.cpp
 	${PROJECT_SOURCE_DIR}/src/timer/LoopTimer.cpp
-	${PROJECT_SOURCE_DIR}/src/optitrack/OptiTrackClient.cpp
+	# ${PROJECT_SOURCE_DIR}/src/optitrack/OptiTrackClient.cpp
 )
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
@@ -89,15 +89,9 @@ set (CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG          ${PROJECT_SOURCE_DIR}/bin)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL     ${PROJECT_SOURCE_DIR}/bin)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE        ${PROJECT_SOURCE_DIR}/bin)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${PROJECT_SOURCE_DIR}/bin)
-set (CS225A_BINARY_DIR ${PROJECT_SOURCE_DIR}/bin)
+set (CS327A_BINARY_DIR ${PROJECT_SOURCE_DIR}/bin)
 
-# add_subdirectory(src/optitrack)
 add_subdirectory(src/visualization)
-add_subdirectory(src/simulation)
-# add_subdirectory(src/hw0)
-# add_subdirectory(src/hw1)
-# add_subdirectory(src/hw2)
-# add_subdirectory(src/hw3)
-add_subdirectory(src/demo_project)
-# add_subdirectory(src/puma)
-add_subdirectory(src/kuka_iiwa)
+#add_subdirectory(src/optiTrack)
+add_subdirectory(screwCapTask)
+
