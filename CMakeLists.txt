@@ -68,13 +68,6 @@ elseif (CMAKE_SYSTEM_NAME MATCHES Linux)
 	set(JSONCPP_LIBRARY ${JSONCPP_LIBRARIES})
 endif ()
 
-
-# - natnetlinux
-find_package(Boost REQUIRED COMPONENTS system thread)
-include_directories(${Boost_INCLUDE_DIRS})
-link_libraries(${Boost_LIBRARIES})
-include_directories(${PROJECT_SOURCE_DIR}/external/NatNetLinux.git/include)
-
 set(CS225A_COMMON_LIBRARIES
 	${CHAI3D_LIBARIES}
 	${SAI2-COMMON_LIBRARIES}
