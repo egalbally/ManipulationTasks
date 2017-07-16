@@ -1,5 +1,5 @@
 # create an executable
-ADD_EXECUTABLE (screwCapTask ${ManipulationTasks_COMMON_SOURCE} screwCapTask_controller.cpp)
+ADD_EXECUTABLE (screwCapTask ${CS225A_COMMON_SOURCE} screwCapTask_controller.cpp)
 
 # and link the library against the executable
 TARGET_LINK_LIBRARIES (screwCapTask ${CS225A_COMMON_LIBRARIES})

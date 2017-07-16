@@ -9,7 +9,7 @@ SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 include_directories(/usr/include /usr/local/include)
 
 # set common source
-set (ManipulationTasks_COMMON_SOURCE
+set (CS225A_COMMON_SOURCE
 	${PROJECT_SOURCE_DIR}/src/redis/RedisClient.cpp
 	${PROJECT_SOURCE_DIR}/src/timer/LoopTimer.cpp
 	# ${PROJECT_SOURCE_DIR}/src/optitrack/OptiTrackClient.cpp
