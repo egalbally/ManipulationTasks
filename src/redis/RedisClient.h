@@ -1,42 +1,90 @@
+/**
+ * RedisClient.h
+ *
+ * Author: Toki Migimatsu
+ * Created: April 2017
+ */
+
 #ifndef REDIS_CLIENT_H
 #define REDIS_CLIENT_H
 
 #include <Eigen/Core>
 #include <hiredis/hiredis.h>
 #include <string>
-#include <iostream>
+#include <vector>
+#include <thread>
+#include <chrono>
 #include <stdexcept>
+
+#define KEEP_DEPRECATED
+
+#ifdef KEEP_DEPRECATED
+#include <iostream>
 #include <sstream>
 #include <algorithm>
-#include <vector>
-
-// For deprecated functions
 #include <json/json.h>
 #include <iomanip>
+#endif  // KEEP_DEPRECATED
 
 // #define JSON_DEFAULT
 
+namespace RedisServer {
+	// Default server ip
+	const std::string DEFAULT_IP = "127.0.0.1";
+
+	// Default server port
+	const int DEFAULT_PORT = 6379;
+}
+
+struct redisReplyDeleter {
+	void operator()(redisReply *r) { freeReplyObject(r); }
+};
+struct redisContextDeleter {
+	void operator()(redisContext *c) { redisFree(c); }
+};
+
+#ifdef KEEP_DEPRECATED
 struct HiredisServerInfo {
 	std::string hostname_;
     int port_;
     timeval timeout_;
 };
+#endif  // KEEP_DEPRECATED
 
 class RedisClient {
 
 public:
-	RedisClient () :
-		context_(nullptr),
-		reply_(nullptr)
-	{
-		// Do nothing
-	}
+	std::unique_ptr<redisContext, redisContextDeleter> context_;
 
-	HiredisServerInfo server_info_;
-	redisContext *context_;
-    redisReply *reply_;
-	//TODO: decide if needed. Currently, we throw up if server disconnects
-	//bool connected_;
+	/**
+ 	 * Connect to Redis server.
+ 	 *
+ 	 * @param hostname  Redis server IP address (default 127.0.0.1).
+ 	 * @param port      Redis server port number (default 6379).
+ 	 * @param timeout   Connection attempt timeout (default 1.5s).
+ 	 */
+	void connect(const std::string& hostname="127.0.0.1", const int port=6379,
+	             const struct timeval& timeout={1, 500000});
+
+	/**
+ 	 * Issue a command to Redis.
+ 	 *
+ 	 * This function is a C++ wrapper around hiredis::redisCommand() that
+ 	 * provides a self-freeing redisReply pointer. The command is formatted in
+ 	 * printf() style.
+ 	 *
+ 	 * @param format  Format string.
+ 	 * @param ...     Format values.
+ 	 * @return        redisReply pointer.
+ 	 */
+	std::unique_ptr<redisReply, redisReplyDeleter> command(const char *format, ...);
+
+	/**
+ 	 * Perform Redis command: PING.
+ 	 *
+ 	 * If the server is responsive, it should reply PONG.
+ 	 */
+	void ping();
 
 	/**
 	 * Perform Redis command: GET key.
@@ -55,33 +103,40 @@ public:
 	void set(const std::string& key, const std::string& value);
 
 	/**
+	 * Perform Redis command: DEL key.
+	 *
+	 * @param key    Key to delete in Redis.
+	 */
+	void del(const std::string& key);
+
+	/**
 	 * Perform Redis GET commands in bulk: GET key1; GET key2...
 	 *
-	 * Gets multiple keys as a non-atomic operation. More efficient than
+	 * Pipeget gets multiple keys as a non-atomic operation. More efficient than
 	 * getting the keys separately. See:
 	 * https://redis.io/topics/mass-insert
 	 *
 	 * In C++11, this function can be called with brace initialization:
-	 * auto values = redis_client.get({"key1", "key2"});
+	 * auto values = redis_client.pipeget({"key1", "key2"});
 	 * 
 	 * @param keys  Vector of keys to get from Redis.
 	 * @return      Vector of retrieved values. Optimized with RVO.
 	 */
-	std::vector<std::string> get(const std::vector<std::string>& keys);
+	std::vector<std::string> pipeget(const std::vector<std::string>& keys);
 
 	/**
 	 * Perform Redis SET commands in bulk: SET key1 val1; SET key2 val2...
 	 *
-	 * Sets multiple keys as a non-atomic operation. More efficient than
+	 * Pipeset sets multiple keys as a non-atomic operation. More efficient than
 	 * setting the keys separately. See:
 	 * https://redis.io/topics/mass-insert
 	 *
 	 * In C++11, this function can be called with brace initialization:
-	 * redis_client.set({{"key1", "val1"}, {"key2", "val2"}});
+	 * redis_client.pipeset({{"key1", "val1"}, {"key2", "val2"}});
 	 * 
 	 * @param keyvals  Vector of key-value pairs to set in Redis.
 	 */
-	void set(const std::vector<std::pair<std::string, std::string>>& keyvals);
+	void pipeset(const std::vector<std::pair<std::string, std::string>>& keyvals);
 
 	/**
 	 * Perform Redis command: MGET key1 key2...
@@ -206,12 +261,15 @@ public:
 		set(key, encodeEigenMatrix(value));
 	}
 
+#ifdef KEEP_DEPRECATED
 public:
+	redisReply *reply_;
+	HiredisServerInfo server_info_;
 	// init with server info
 	void serverIs(HiredisServerInfo server) {
 		// delete existing connection
 		if (NULL != context_ || server.hostname_.empty()) {
-			redisFree(context_);
+			redisFree(context_.get());
 		}
 		if (server.hostname_.empty()) {
 			// nothing to do
@@ -230,19 +288,19 @@ public:
 			throw(std::runtime_error(err.c_str()));
         }
     	// set context, ping server
-    	context_ = tmp_context;
+    	context_.reset(tmp_context);
 	}
 
 	// set expiry (ms) on an existing db key
 	void keyExpiryIs(const std::string& key, const uint expiry_ms) {
-		reply_ = (redisReply *)redisCommand(context_, "PEXPIRE %s %s", key.c_str(), std::to_string(expiry_ms).c_str());
+		reply_ = (redisReply *)redisCommand(context_.get(), "PEXPIRE %s %s", key.c_str(), std::to_string(expiry_ms).c_str());
 		// NOTE: write commands dont check for write errors.
 		freeReplyObject((void*)reply_);
 	}
 
 	// get command, without return string. for internal use primarily.
 	bool getCommandIs(const std::string &cmd_mssg) {
-		reply_ = (redisReply *)redisCommand(context_, "GET %s", cmd_mssg.c_str());
+		reply_ = (redisReply *)redisCommand(context_.get(), "GET %s", cmd_mssg.c_str());
 		if (NULL == reply_ || REDIS_REPLY_ERROR == reply_->type) {
 			throw(std::runtime_error("Server error in fetching data!"));
 			//TODO: indicate what error
@@ -264,7 +322,7 @@ public:
 	}
 
 	void setCommandIs(const std::string &cmd_mssg, const std::string &data_mssg) {
-		reply_ = (redisReply *)redisCommand(context_, "SET %s %s", cmd_mssg.c_str(), data_mssg.c_str());
+		reply_ = (redisReply *)redisCommand(context_.get(), "SET %s %s", cmd_mssg.c_str(), data_mssg.c_str());
 		// NOTE: set commands dont check for write errors.
       	freeReplyObject((void*)reply_);
 	}
@@ -279,15 +337,15 @@ public:
 		setCommandIs(cmd_mssg, data_mssg);
 	}
 
-    // write raw eigen vector, but in custom string format
-    template<typename Derived>
-    void setEigenMatrixDerivedString(const std::string &cmd_mssg, const Eigen::MatrixBase<Derived> &set_mat) {
+	// write raw eigen vector, but in custom string format
+	template<typename Derived>
+	void setEigenMatrixDerivedString(const std::string &cmd_mssg, const Eigen::MatrixBase<Derived> &set_mat) {
 		std::string data_mssg;
 		// serialize
 		hEigenToStringArrayCustom(set_mat, data_mssg);
 		// set to server
 		setCommandIs(cmd_mssg, data_mssg);
-    }
+	}
 
 	// read raw eigen vector:
 	template<typename Derived>
@@ -297,7 +355,7 @@ public:
 		if(success && !hEigenFromStringArrayJSON(ret_mat, reply_->str)) {
 			throw(std::runtime_error("Could not deserialize json to eigen data!"));
 		}
-		freeReplyObject((void*)reply_);	
+		freeReplyObject((void*)reply_);
 	}
 
 	// read raw eigen vector, but from a custom string rather than from json
@@ -308,18 +366,9 @@ public:
 		if(success && !hEigenFromStringArrayCustom(ret_mat, reply_->str)) {
 			throw(std::runtime_error("Could not deserialize custom string to eigen data!"));
 		}
-		freeReplyObject((void*)reply_);	
+		freeReplyObject((void*)reply_);
 	}
 
-public: // server connectivity tools
-	void ping() {
-		// PING server to make sure things are working..
-        reply_ = (redisReply *)redisCommand(context_,"PING");
-		std::cout<<"\n\nDriver Redis Task : Pinged Redis server. Reply is, "<<reply_->str<<"\n";
-        freeReplyObject((void*)reply_);
-	}
-
-protected:
 	template<typename Derived>
 	static bool hEigentoStringArrayJSON(const Eigen::MatrixBase<Derived> &, std::string &);
 
@@ -331,7 +380,7 @@ protected:
 
 	template<typename Derived>
 	static bool hEigenFromStringArrayCustom(Eigen::MatrixBase<Derived> &, const std::string &);
-
+#endif  // KEEP_DEPRECATED
 };
 
 //Implementation must be part of header for compile time template specialization
@@ -386,6 +435,7 @@ std::string RedisClient::encodeEigenMatrixString(const Eigen::MatrixBase<Derived
 	return s;
 }
 
+#ifdef KEEP_DEPRECATED
 template<typename Derived>
 bool RedisClient::hEigentoStringArrayJSON(const Eigen::MatrixBase<Derived>& x, std::string& arg_str)
 {
@@ -514,33 +564,34 @@ bool RedisClient::hEigenFromStringArrayCustom(Eigen::MatrixBase<Derived>& x, con
 	unsigned int ncols = (std::count(arg_str.begin(), arg_str.end(), ' ') + 1)/nrows;
 	std::replace(copy_str.begin(), copy_str.end(), ';', ' ');
 
-    std::stringstream ss(copy_str);
+	std::stringstream ss(copy_str);
 
-    if(nrows < 1) return false; //Must have elements.
+	if(nrows < 1) return false; //Must have elements.
 
 	bool is_matrix = (nrows > 1);
 	if(!is_matrix)
 	{
-	  x.setIdentity(ncols,1);//Convert it into a vector.
-	  for(int i=0;i<ncols;++i) {
-	  	std::string val;
-		ss >> val;
-	  	x(i,0) = std::stod(val);
-	  }
+		x.setIdentity(ncols,1);//Convert it into a vector.
+		for(int i=0;i<ncols;++i) {
+			std::string val;
+			ss >> val;
+			x(i,0) = std::stod(val);
+		}
 	}
 	else
 	{
-	  if(nrows < 1) return false; //Must have elements.
-	  for(int i=0;i<nrows;++i){
-	    for(int j=0;j<ncols;++j) {
-	    	std::string val;
-			ss >> val;
-			x(i,j) = std::stod(val);
+		if(nrows < 1) return false; //Must have elements.
+		for(int i=0;i<nrows;++i){
+			for(int j=0;j<ncols;++j) {
+				std::string val;
+				ss >> val;
+				x(i,j) = std::stod(val);
+			}
 		}
-	  }
 	}
 	return true;
 }
+#endif  // KEEP_DEPRECATED
 
 
 #endif //REDIS_CLIENT_H
