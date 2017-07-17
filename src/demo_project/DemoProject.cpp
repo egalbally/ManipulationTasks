@@ -37,6 +37,30 @@ void DemoProject::readRedisValues() {
 	kv_joint_ = stoi(redis_.get(KEY_KV_JOINT));
 	kp_joint_init_ = stoi(redis_.get(KEY_KP_JOINT_INIT));
 	kv_joint_init_ = stoi(redis_.get(KEY_KV_JOINT_INIT));
+
+	Eigen::VectorXd F_sensor_6d = redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE);
+	
+	// Offset moment bias
+	F_sensor_6d(3) += 0.2;
+
+	Eigen::Matrix3d R_sensor_to_ee;
+	R_sensor_to_ee << -1/sqrt(2), -1/sqrt(2), 0,
+	                   1/sqrt(2), -1/sqrt(2), 0,
+	                  0, 0, -1;
+
+	F_sensor_ = R_sensor_to_ee * F_sensor_6d.head(3);
+	M_sensor_ = R_sensor_to_ee * F_sensor_6d.tail(3);
+	for (int i = 0; i<3;i++){
+		if (M_sensor_(i) < 0.03 && M_sensor_(i) > -0.03){
+			M_sensor_(i) = 0;
+		}
+	}
+	Eigen::VectorXd F_controller(6);
+	F_controller << F_sensor_, M_sensor_;
+
+	redis_.setEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE + "_controller", F_controller);
+
+	//-0.0400024,-0.361321,-0.273866,-0.201691,-0.0342323,-0.0112474
 }
 
 /**
@@ -64,14 +88,19 @@ void DemoProject::updateModel() {
 
 	// Forward kinematics
 	robot->position(x_, "link6", Eigen::Vector3d::Zero());
+	robot->rotation(R_ee_to_base_, "link6");
 	robot->linearVelocity(dx_, "link6", Eigen::Vector3d::Zero());
+	robot->angularVelocity(w_, "link6");
 
 	// Jacobians
+	robot->J_0(J_, "link6", Eigen::Vector3d::Zero());
 	robot->Jv(Jv_, "link6", Eigen::Vector3d::Zero());
-	robot->nullspaceMatrix(N_, Jv_);
+	robot->nullspaceMatrix(N_, J_);
+	robot->nullspaceMatrix(Nv_, Jv_);
 
 	// Dynamics
 	robot->taskInertiaMatrixWithPseudoInv(Lambda_x_, Jv_);
+	robot->taskInertiaMatrixWithPseudoInv(Lambda_, J_);
 	robot->gravityVector(g_);
 }
 
@@ -142,13 +171,13 @@ DemoProject::ControllerStatus DemoProject::computeOperationalSpaceControlTorques
  * Controller to move end effector to desired position.
  */
 DemoProject::ControllerStatus DemoProject::screwBottleCap() {
-	// PD position control with velocity saturation
-	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.1));
+	// PD position control in operational space
+	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.025));
 	Eigen::Vector3d x_err = x_ - x_des_;
 	Eigen::Vector3d dx_err = dx_ - dx_des_;
-	Eigen::Vector3d ddx = -kv_pos_ * x_err - kv_joint_ * dx_err;
+	Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
 
-	// Nullspace posture control and damping
+	// Nullspace joint position control and damping
 	Eigen::VectorXd q_err = Eigen::VectorXd::Zero(KukaIIWA::DOF);
 	q_err(6) = robot->_q(6) - (KukaIIWA::JOINT_LIMITS(6) - 15.0 * M_PI / 180.0);
 	dq_des_ = -(kp_joint_ / kv_joint_) * q_err;
@@ -160,17 +189,17 @@ DemoProject::ControllerStatus DemoProject::screwBottleCap() {
 	// Control torques
 	Eigen::Vector3d F_x = Lambda_x_ * ddx;
 	Eigen::VectorXd F_joint = robot->_M * ddq;
-	command_torques_ = Jv_.transpose() * F_x + N_.transpose() * F_joint;
+	command_torques_ = Jv_.transpose() * F_x + Nv_.transpose() * F_joint;
 
 	return RUNNING;
 }
 
 DemoProject::ControllerStatus DemoProject::rewindBottleCap() {
 	// PD position control with velocity saturation
-	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.1));
+	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.025));
 	Eigen::Vector3d x_err = x_ - x_des_;
 	Eigen::Vector3d dx_err = dx_ - dx_des_;
-	Eigen::Vector3d ddx = -kv_pos_ * x_err - kv_joint_ * dx_err;
+	Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
 
 	// Nullspace posture control and damping
 	Eigen::VectorXd q_err = Eigen::VectorXd::Zero(KukaIIWA::DOF);
@@ -186,25 +215,36 @@ DemoProject::ControllerStatus DemoProject::rewindBottleCap() {
 	// Control torques
 	Eigen::Vector3d F_x = Lambda_x_ * ddx;
 	Eigen::VectorXd F_joint = robot->_M * ddq;
-	command_torques_ = Jv_.transpose() * F_x + N_.transpose() * F_joint;
+	command_torques_ = Jv_.transpose() * F_x + Nv_.transpose() * F_joint;
 
 	return RUNNING;
 }
 
 DemoProject::ControllerStatus DemoProject::alignBottleCap() {
 	// PD position control with velocity saturation
-	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.1));
+	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.025));
 	Eigen::Vector3d x_err = x_ - x_des_;
 	Eigen::Vector3d dx_err = dx_ - dx_des_;
-	Eigen::Vector3d ddx = -kv_pos_ * x_err - kv_joint_ * dx_err;
+	Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
 	
+	Eigen::Vector3d dPhi = -R_ee_to_base_ * M_sensor_;
+	Eigen::Vector3d dw = -kp_ori_ * dPhi - kv_ori_ * w_;
+	Eigen::VectorXd ddxdw(6);
+	ddxdw << ddx, dw;
+
 	// Nullspace damping	
 	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
 
 	// Control torques
-	Eigen::Vector3d F_x = Lambda_x_ * ddx;
+	// Eigen::Vector3d F_x = Lambda_x_ * ddx;
+	Eigen::VectorXd F_xw = Lambda_ * ddxdw;
+
 	Eigen::VectorXd F_joint = robot->_M * ddq;
-	command_torques_ = Jv_.transpose() * F_x + N_.transpose() * F_joint;
+	// command_torques_ = Jv_.transpose() * F_x + N_.transpose() * F_joint;
+	command_torques_ = J_.transpose() * F_xw + N_.transpose() * F_joint;
+
+	// if ((M_sensor_.norm() <= 0.1) && (w_.norm() < 0.01) && (F_sensor_(2) < -1.0)) return FINISHED;
+
 	return RUNNING;
 }
 
@@ -282,7 +322,7 @@ void DemoProject::runLoop() {
 			case ALIGN_BOTTLE_CAP:
 				if (alignBottleCap() == FINISHED) {
 					cout << "Bottle cap aligned. Switching to rewind cap." << endl;
-					controller_state_ = SCREW_BOTTLE_CAP;
+					controller_state_ = REWIND_BOTTLE_CAP;
 				}
 				break;
 			// Control end effector to desired position

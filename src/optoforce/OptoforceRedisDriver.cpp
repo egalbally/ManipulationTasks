@@ -3,7 +3,7 @@
  * it will create a connection, read the data, transfer the data from count value to real units
  * and publish it in redis with a key named "sai2::optoforceSensor::6Dsensor::force"
  */
-#include "optoforceRedisDriver.h"
+#include "OptoforceRedisDriver.h"
 
 #include <iostream>
 #include <fstream>
@@ -395,7 +395,7 @@ void Run6DSensorExample(OptoDAQ & p_optoDAQ)
 
 
 		// publish to redis
-		redis_client.setEigenMatrix(KEY_6D_SENSOR_FORCE, force_filtered);
+		redis_client.setEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE, force_filtered);
 
 		counter++;
 

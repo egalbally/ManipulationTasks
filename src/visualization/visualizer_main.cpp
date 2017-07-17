@@ -282,6 +282,8 @@ int main(int argc, char** argv) {
 	    // poll for events
 	    glfwPollEvents();
 
+	    graphics-> _world -> setShowFrame(true, true);
+
 	    // move scene camera as required
     	Eigen::Vector3d cam_up_axis;
     	// cam_up_axis = camera_vertical;

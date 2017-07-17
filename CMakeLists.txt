@@ -88,5 +88,6 @@ add_subdirectory(src/visualization)
 add_subdirectory(src/simulation)
 add_subdirectory(src/demo_project)
 add_subdirectory(src/kuka_iiwa)
+add_subdirectory(src/optoforce)
 add_subdirectory(screwCapTask)
 
