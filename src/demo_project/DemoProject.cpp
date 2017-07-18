@@ -100,8 +100,10 @@ void DemoProject::updateModel() {
 	// Jacobians
 	robot->J_0(J_, "link6", Eigen::Vector3d::Zero());
 	robot->Jv(Jv_, "link6", Eigen::Vector3d::Zero());
+	robot->Jv(Jv_cap_, "link6", Eigen::Vector3d(0,0,0.11));
 	robot->nullspaceMatrix(N_, J_);
 	robot->nullspaceMatrix(Nv_, Jv_);
+	robot->nullspaceMatrix(Nv_cap_, Jv_cap_);
 
 	// Dynamics
 	robot->taskInertiaMatrixWithPseudoInv(Lambda_x_, Jv_);
