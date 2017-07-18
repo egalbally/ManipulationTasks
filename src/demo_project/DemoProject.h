@@ -46,9 +46,12 @@ public:
 		command_torques_(dof),
 		J_(6, dof),
 		Jv_(3, dof),
+		Jv_cap_(3, dof),
 		N_(dof, dof),
 		Nv_(dof, dof),
+		Nv_cap_(dof, dof),
 		Lambda_x_(3, 3),
+		Lambda_x_cap_(3, 3),
 		Lambda_(6, 6),
 		g_(dof),
 		q_des_(dof),
@@ -163,7 +166,7 @@ protected:
 	Eigen::VectorXd command_torques_;
 	Eigen::MatrixXd Jv_, J_, Jv_cap_;
 	Eigen::MatrixXd N_, Nv_, Nv_cap_;
-	Eigen::MatrixXd Lambda_x_, Lambda_;
+	Eigen::MatrixXd Lambda_x_, Lambda_, Lambda_x_cap_;
 	Eigen::VectorXd g_;
 	Eigen::Vector3d x_, dx_, w_;
 	Eigen::VectorXd q_des_, dq_des_;
@@ -177,7 +180,7 @@ protected:
 	// Default gains (used only when keys are nonexistent in Redis)
 	double kp_pos_ = 30;
 	double kv_pos_ = 0;
-	double kp_ori_ = 7;
+	double kp_ori_ = 4;
 	double kv_ori_ = 0.5;
 	double kp_joint_init_ = 10;
 	double kv_joint_init_ = 4;
@@ -185,8 +188,8 @@ protected:
 	double kv_joint_ = 0;
 	double kp_screw_ = 15;
 	double kv_screw_ = 4;
-	double kp_sliding_ = 2;
-	double kp_bias_ = 2;
+	double kp_sliding_ = 1;
+	double kp_bias_ = 1.2;
 };
 
 #endif  // DEMO_PROJECT_H

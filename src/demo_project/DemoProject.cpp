@@ -107,6 +107,7 @@ void DemoProject::updateModel() {
 
 	// Dynamics
 	robot->taskInertiaMatrixWithPseudoInv(Lambda_x_, Jv_);
+	robot->taskInertiaMatrixWithPseudoInv(Lambda_x_cap_, Jv_cap_);
 	robot->taskInertiaMatrixWithPseudoInv(Lambda_, J_);
 	robot->gravityVector(g_);
 }
@@ -259,23 +260,24 @@ DemoProject::ControllerStatus DemoProject::rewindBottleCap() {
 	Eigen::Vector3d x_err = x_ - x_des_;
 	Eigen::Vector3d dx_err = dx_ - dx_des_;
 	Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
-	
+
 	// Finish if the robot has converged to the last joint limit (+15deg)
-	Eigen::VectorXd q_err = Eigen::VectorXd::Zero(KukaIIWA::DOF);
-	q_err(6) = robot->_q(6) - (-KukaIIWA::JOINT_LIMITS(6) + 15.0 * M_PI / 180.0);
-	if (q_err.norm() < 0.1) return FINISHED;
+	double q_screw_err = robot->_q(6) - (-KukaIIWA::JOINT_LIMITS(6) + 15.0 * M_PI / 180.0);
+	if (abs(q_screw_err) < 0.1) return FINISHED;
 
 	//Joint space velocity saturation
-	dq_des_ = -(kp_screw_ / kv_screw_) * q_err;
-	double v = kMaxVelocity / dq_des_.norm();
+	double dq_screw_des = -(kp_screw_ / kv_screw_) * q_screw_err;
+	double v = kMaxVelocity / abs(dq_screw_des);
 	if (v > 1) v = 1;
-	Eigen::VectorXd dq_err = robot->_dq - v * dq_des_;
-	Eigen::VectorXd ddq = -kv_screw_ * dq_err;
+	double dq_screw_err = robot->_dq(6) - v * dq_screw_des;
+
+	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
+	ddq(6) = -kv_screw_ * dq_screw_err;
 
 	// Control torques with null space damping
 	Eigen::Vector3d F_x = Lambda_x_ * ddx;
 	Eigen::VectorXd F_joint = robot->_M * ddq;
-	command_torques_ = Jv_.transpose() * F_x + Nv_.transpose() * F_joint;
+	command_torques_ = Jv_cap_.transpose() * F_x + Nv_cap_.transpose() * F_joint;
 
 	return RUNNING;
 }
@@ -292,19 +294,23 @@ DemoProject::ControllerStatus DemoProject::screwBottleCap() {
 	Eigen::Vector3d dx_err = dx_ - dx_des_;
 	Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
 
-	// Nullspace joint position control and damping
-	Eigen::VectorXd q_err = Eigen::VectorXd::Zero(KukaIIWA::DOF);
-	q_err(6) = robot->_q(6) - (KukaIIWA::JOINT_LIMITS(6) - 15.0 * M_PI / 180.0);
-	dq_des_ = -(kp_screw_ / kv_screw_) * q_err;
-	double v = kMaxVelocity / dq_des_.norm(); //velocity saturation
+	// Finish if the robot has converged to the last joint limit (+15deg)
+	double q_screw_err = robot->_q(6) - (KukaIIWA::JOINT_LIMITS(6) - 15.0 * M_PI / 180.0);
+	if (abs(q_screw_err) < 0.1) return FINISHED;
+
+	//Joint space velocity saturation
+	double dq_screw_des = -(kp_screw_ / kv_screw_) * q_screw_err;
+	double v = kMaxVelocity / abs(dq_screw_des);
 	if (v > 1) v = 1;
-	Eigen::VectorXd dq_err = robot->_dq - v * dq_des_;
-	Eigen::VectorXd ddq = -kv_screw_ * dq_err;
+	double dq_screw_err = robot->_dq(6) - v * dq_screw_des;
+
+	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
+	ddq(6) = -kv_screw_ * dq_screw_err;
 
 	// Control torques
 	Eigen::Vector3d F_x = Lambda_x_ * ddx;
 	Eigen::VectorXd F_joint = robot->_M * ddq;
-	command_torques_ = Jv_.transpose() * F_x + Nv_.transpose() * F_joint;
+	command_torques_ = Jv_cap_.transpose() * F_x + Nv_cap_.transpose() * F_joint;
 
 	return RUNNING;
 }
