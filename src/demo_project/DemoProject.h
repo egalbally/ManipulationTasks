@@ -188,7 +188,7 @@ protected:
 	double kv_joint_ = 0;
 	double kp_screw_ = 15;
 	double kv_screw_ = 4;
-	double kp_sliding_ = 1;
+	double kp_sliding_ = 1.5;
 	double kp_bias_ = 1.2;
 };
 
