@@ -29,6 +29,7 @@ public:
 		KEY_EE_POS_DES      (kRedisKeyPrefix + robot_name + "::tasks::ee_pos_des"),
 		KEY_JOINT_POSITIONS (kRedisKeyPrefix + robot_name + "::sensors::q"),
 		KEY_JOINT_VELOCITIES(kRedisKeyPrefix + robot_name + "::sensors::dq"),
+	    THETA(kRedisKeyPrefix + robot_name + "::sensor::theta"),
 		KEY_TIMESTAMP       (kRedisKeyPrefix + robot_name + "::timestamp"),
 		KEY_KP_POSITION     (kRedisKeyPrefix + robot_name + "::tasks::kp_pos"),
 		KEY_KV_POSITION     (kRedisKeyPrefix + robot_name + "::tasks::kv_pos"),
@@ -43,6 +44,12 @@ public:
 		KEY_KP_SLIDING      (kRedisKeyPrefix + robot_name + "::tasks::kp_sliding"),
 		KEY_KP_BIAS         (kRedisKeyPrefix + robot_name + "::tasks::kp_bias"),
 		KEY_UI_FLAG         (kRedisKeyPrefix + robot_name + "::ui::flag"),
+		KEY_KP_ORIENTATION_EXP(kRedisKeyPrefix + robot_name + "::tasks::kp_ori_exp"),
+	    KEY_KV_ORIENTATION_EXP(kRedisKeyPrefix + robot_name + "::tasks::kv_ori_exp"),
+	    KEY_KP_POSITION_EXP (kRedisKeyPrefix + robot_name + "::tasks::kp_pos_exp"),
+	    KEY_MORE_SPEED(kRedisKeyPrefix + robot_name + "::tasks::more_speed"),
+	    KEY_LESS_DAMPING(kRedisKeyPrefix + robot_name + "::tasks::less_damping"),
+
 		command_torques_(dof),
 		J_(6, dof),
 		Jv_(3, dof),
@@ -133,6 +140,12 @@ protected:
 	const std::string KEY_UI_FLAG;
 	const std::string KEY_KP_SLIDING;
 	const std::string KEY_KP_BIAS;
+	const std::string KEY_KP_ORIENTATION_EXP;
+	const std::string KEY_KV_ORIENTATION_EXP;
+	const std::string KEY_KP_POSITION_EXP;
+	const std::string KEY_MORE_SPEED;
+	const std::string KEY_LESS_DAMPING;
+	const std::string THETA;
 
 	/***** Member functions *****/
 
@@ -142,6 +155,7 @@ protected:
 	ControllerStatus computeJointSpaceControlTorques();
 	ControllerStatus computeOperationalSpaceControlTorques();
 	ControllerStatus alignBottleCap();
+	ControllerStatus alignBottleCapExponentialDamping();
 	ControllerStatus checkAlignment();
 	ControllerStatus screwBottleCap();
 	ControllerStatus rewindBottleCap();
@@ -190,6 +204,16 @@ protected:
 	double kv_screw_ = 4;
 	double kp_sliding_ = 1.5;
 	double kp_bias_ = 1.2;
+
+	// gains for exponential damping during alignment
+	double exp_moreSpeed = 0.8;
+	double exp_lessDamping = 2;
+	double kp_ori_exp = 15;
+	double kv_ori_exp = 10;
+	double kp_pos_exp = 15;	
+
+	// angle between contact surface normal and cap normal
+	double theta;
 };
 
 #endif  // DEMO_PROJECT_H

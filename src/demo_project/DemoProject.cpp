@@ -41,6 +41,14 @@ void DemoProject::readRedisValues() {
 	kv_screw_ = stod(redis_.get(KEY_KV_SCREW));
 	kp_sliding_ = stod(redis_.get(KEY_KP_SLIDING));
 	kp_bias_ = stod(redis_.get(KEY_KP_BIAS));
+	exp_moreSpeed = stod(redis_.get(KEY_MORE_SPEED));
+	exp_lessDamping = stod(redis_.get(KEY_LESS_DAMPING));
+	kp_ori_exp = stod(redis_.get(KEY_KP_ORIENTATION_EXP));
+	kv_ori_exp = stod(redis_.get(KEY_KV_ORIENTATION_EXP));
+	kp_pos_exp = stod(redis_.get(KEY_KP_POSITION_EXP));
+
+	// angle between contact surface normal and cap normal
+	theta = stod(redis_.get(THETA));
 
 	Eigen::VectorXd F_sensor_6d = redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE);
 	
@@ -94,6 +102,7 @@ void DemoProject::updateModel() {
 	robot->rotation(R_ee_to_base_, "link6");
 	robot->linearVelocity(dx_, "link6", Eigen::Vector3d::Zero());
 	robot->angularVelocity(w_, "link6");
+	theta = acos(abs(F_sensor_.dot(Eigen::Vector3d(0,0,1))) / F_sensor_.norm());
 
 	// Jacobians
 	robot->J_0(J_, "link6", Eigen::Vector3d::Zero());
@@ -217,7 +226,47 @@ DemoProject::ControllerStatus DemoProject::alignBottleCap() {
 }
 
 /**
- * DemoProject::rewindBottleCap()
+ * DemoProject::alignBottleCap()
+ * ----------------------------------------------------
+ * Controller to move end effector to desired position.
+ */
+DemoProject::ControllerStatus DemoProject::alignBottleCapExponentialDamping() {
+	// Position - set xdes below the current position in z to apply a constant downward force
+	Eigen::Vector3d x_des_ee(0,0,0.025);
+	Eigen::Vector3d x_bias(0,0.005,0);
+	Eigen::Vector3d sliding_vector;
+	sliding_vector = x_des_ee.cross(M_sensor_);
+	robot->position(x_des_, "link6", x_des_ee + kp_sliding_ * sliding_vector);
+	x_des_ += kp_bias_ * x_bias ;
+
+	Eigen::Vector3d x_err = x_ - x_des_;
+	Eigen::Vector3d dx_err = dx_ - dx_des_;
+
+	Eigen::Vector3d ddx =  kp_pos_ * x_err - kv_pos_ * dx_err;
+
+	// Orientation
+	Eigen::Vector3d dPhi;
+	dPhi = -R_ee_to_base_ * M_sensor_;
+	Eigen::Vector3d dw = -(1-exp(-exp_moreSpeed*theta)) *kp_ori_ * dPhi - (exp(-exp_lessDamping*theta)*kv_ori_) * w_;
+	Eigen::VectorXd ddxdw(6);
+	ddxdw << ddx, dw;
+
+	// Nullspace damping	
+	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
+	Eigen::VectorXd F_joint = robot->_M * ddq; 
+
+	// Control torques
+	Eigen::VectorXd F_xw = Lambda_ * ddxdw;
+	command_torques_ = J_.transpose() * F_xw + N_.transpose() * F_joint;
+
+	// Finish if sensed moments and angular velocity are zero
+	if ((M_sensor_.norm() <= 0.1) && (w_.norm() < 0.01) && (F_sensor_(2) < -1.0)) return FINISHED;
+
+	return RUNNING;
+}
+
+/**
+ * DemoProject::checkAlignment()
  * ----------------------------------------------------
  * Controller to check if sensed moments are zero, angular velocity is zero and Fz is smaller than -1.
  */
@@ -367,14 +416,12 @@ void DemoProject::runLoop() {
 				if (computeJointSpaceControlTorques() == FINISHED) {
 					cout << "Joint position initialized. Switching to align bottle cap." << endl;
 					controller_state_ = DemoProject::ALIGN_BOTTLE_CAP;
-					q_des_ = robot->_q;
-					q_des_(6) = KukaIIWA::JOINT_LIMITS(6); 
-				};
+				}
 				break;
 			
 			// Screw cap
 			case ALIGN_BOTTLE_CAP:
-				if (alignBottleCap() == FINISHED) {
+				if (alignBottleCapExponentialDamping() == FINISHED) {
 					cout << "Bottle cap aligned. Switching to check alignment." << endl;
 					controller_state_ = CHECK_ALIGNMENT;
 					t_alignment_ = timer_.elapsedTime();
