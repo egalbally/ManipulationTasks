@@ -1,26 +1,53 @@
 Kuka IIWA Redis Driver
 ======================
 
-This driver was developped to work jointly with sai 2.0.
+This driver was developed to work jointly with sai 2.0.
 It works with redis. 
-To use your own controller written in sai 2.0, you should use the same redis keys for the joint angles, joint velocities, and torques as the driver, as well as JSON formatting for the arrays.
+To use your own controller written in sai 2.0, you should use the same redis keys for the joint angles, joint velocities, and torques as the driver.
 
-usage
+Installation
+------------
+
+1. Obtain FRI-Client-SDK and KukaLBRDynamics and put them in the src/kuka_iiwa directory.
+
+2. Build the FRI library.
+
+   ```cd cs225a.git/src/kuka_iiwa/FRI-Client-SDK/build/GNUMake```
+   ```make```
+
+3. Uncomment the following line cs225a.git/CMakeLists.txt file to build the driver.
+
+   ```add_subdirectory(src/kuka_iiwa)```
+
+4. Make
+
+   ```./make.sh```
+
+Usage
 -----
 
-1. Make sure that you are using the same redis keys in your controller as in the driver. By default, the keys you should read and write in the controller are :
-	- "sai2::KUKA_IIWA::sensors::q"          Read the joint positions  
-	- "sai2::KUKA_IIWA::sensors::dq"         Read the joint velocities
-	- "sai2::KUKA_IIWA::sensors::torques"    Read the sensed torques (optionnal)
-	- "sai2::KUKA_IIWA::actuators::fgc"      Write the commanded torques
+1. Make sure that you are using the same redis keys in your controller as in the driver. The keys can be imported with:
 
-2. Run the driver
+   ```#include "kuka_iiwa/RedisClient.h"```
 
-		cd build
-		./kuka_iiwa_redis_driver
+   By default, the keys you should read and write in the controller are:
+	- "cs225a::kuka_iiwa::sensors::q"          Read the joint positions
+	- "cs225a::kuka_iiwa::sensors::dq"         Read the joint velocities
+	- "cs225a::kuka_iiwa::sensors::torques"    Read the sensed torques (optional)
+	- "cs225a::kuka_iiwa::actuators::fgc"      Write the commanded torques
 
-3. Run the TorqueOverlay application on the robot
+2. Make sure your tool.xml file specifies the correct weight of your end-effector.
 
-4. When the robot is floating (after it went back to home position), you can start your controller
+3. Run the driver
 
-5. When you are done, stop the driver (Ctrl+C) and your controller
+   ```
+   cd bin
+   ./make.sh
+   ./kuka_iiwa_driver
+   ```
+
+4. Run the TorqueOverlay application on the robot WHILE KEEPING YOUR HAND ON THE E-STOP.
+
+5. When the robot is floating (after it went back to home position), you can start your controller
+
+6. When you are done, stop the driver (Ctrl+C) and your controller

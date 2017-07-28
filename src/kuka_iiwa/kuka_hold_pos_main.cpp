@@ -3,7 +3,7 @@
 #include "model/ModelInterface.h"
 #include "redis/RedisClient.h"
 #include "timer/LoopTimer.h"
-#include "kuka_iiwa/RedisDriver.h"
+#include "kuka_iiwa/KukaIIWA.h"
 
 #include <iostream>
 #include <string>
