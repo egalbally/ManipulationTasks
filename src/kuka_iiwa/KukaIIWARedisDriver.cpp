@@ -147,11 +147,7 @@ static void printCommandMode(KUKA::FRI::EClientCommandMode command_mode) {
 namespace KUKA {
 namespace FRI {
 
-<<<<<<< HEAD:src/kuka_iiwa/RedisDriver.cpp
-RedisDriver::RedisDriver(const std::string& redis_ip, const int redis_port, const char *tool_filename)
-=======
-KukaIIWARedisDriver::KukaIIWARedisDriver(const std::string& redis_ip, const int redis_port)
->>>>>>> 3fc8b1d98aeca39047ba57fb41b37d6576a49e09:src/kuka_iiwa/KukaIIWARedisDriver.cpp
+KukaIIWARedisDriver::KukaIIWARedisDriver(const std::string& redis_ip, const int redis_port, const char *tool_filename)
 #ifdef USE_KUKA_LBR_DYNAMICS
 	: dynamics_(kuka::Robot::LBRiiwa)
 #endif
@@ -446,7 +442,6 @@ void KukaIIWARedisDriver::command()
 
 
 #ifdef USE_KUKA_LBR_DYNAMICS
-
 void KukaIIWARedisDriver::parseTool(const char *tool_filename)
 {
 	tinyxml2::XMLDocument doc;
