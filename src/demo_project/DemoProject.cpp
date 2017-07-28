@@ -47,9 +47,6 @@ void DemoProject::readRedisValues() {
 	kv_ori_exp = stod(redis_.get(KEY_KV_ORIENTATION_EXP));
 	kp_pos_exp = stod(redis_.get(KEY_KP_POSITION_EXP));
 
-	// angle between contact surface normal and cap normal
-	theta = stod(redis_.get(THETA));
-
 	Eigen::VectorXd F_sensor_6d = redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE);
 	
 	// Offset moment bias
@@ -83,6 +80,9 @@ void DemoProject::writeRedisValues() {
 	// Send end effector position and desired position
 	redis_.setEigenMatrix(KEY_EE_POS, x_);
 	redis_.setEigenMatrix(KEY_EE_POS_DES, x_des_);
+
+	// angle between contact surface normal and cap normal
+	redis_.set(THETA, to_string(theta));
 
 	// Send torques
 	redis_.setEigenMatrix(KEY_COMMAND_TORQUES, command_torques_);
@@ -242,7 +242,7 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapExponentialDamping() {
 	Eigen::Vector3d x_err = x_ - x_des_;
 	Eigen::Vector3d dx_err = dx_ - dx_des_;
 
-	Eigen::Vector3d ddx =  kp_pos_ * x_err - kv_pos_ * dx_err;
+	Eigen::Vector3d ddx =  -kp_pos_ * x_err - kv_pos_ * dx_err;
 
 	// Orientation
 	Eigen::Vector3d dPhi;
@@ -376,6 +376,11 @@ void DemoProject::initialize() {
 	redis_.set(KEY_UI_FLAG, to_string(0));
 	redis_.set(KEY_KP_SLIDING, to_string(kp_sliding_));
 	redis_.set(KEY_KP_BIAS, to_string(kp_bias_));
+	redis_.set(KEY_KP_ORIENTATION_EXP, to_string(kp_ori_exp));
+	redis_.set(KEY_KV_ORIENTATION_EXP, to_string(kv_ori_exp));
+	redis_.set(KEY_KP_POSITION_EXP, to_string(kp_pos_exp));
+	redis_.set(KEY_MORE_SPEED, to_string(exp_moreSpeed));
+	redis_.set(KEY_LESS_DAMPING, to_string(exp_lessDamping));
 }
 
 /**

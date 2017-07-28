@@ -4,7 +4,7 @@
 // CS225a
 #include "redis/RedisClient.h"
 #include "timer/LoopTimer.h"
-#include "kuka_iiwa/RedisDriver.h"
+#include "kuka_iiwa/KukaIIWA.h"
 #include "optoforce/OptoforceRedisDriver.h"
 
 // Standard

@@ -10,7 +10,6 @@ cmake_minimum_required(VERSION 3.1)
 
 option(USE_KUKA_LBR_DYNAMICS "USE_KUKA_LBR_DYNAMICS" ON)
 
-
 ################Initialize the executable#################
 
 #Set the compilation flags
@@ -41,7 +40,7 @@ find_library(FRI_LIBRARIES FRIClient PATHS ${FRI_BASE_DIR}/lib)
 # KUKA LBR Dynamics
 if (USE_KUKA_LBR_DYNAMICS)
     set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/KukaLBRDynamics)
-    option(USE_KUKA_RBDL    "USE_KUKA_RBDL"     OFF)
+    option(USE_KUKA_RBDL "USE_KUKA_RBDL" OFF)
     find_package (KukaLBRDynamics REQUIRED)
     include_directories(${KukaLBRDynamics_INCLUDE_DIRS})
     target_link_libraries(${PROJECT_NAME} ${KukaLBRDynamics_LIBRARIES})

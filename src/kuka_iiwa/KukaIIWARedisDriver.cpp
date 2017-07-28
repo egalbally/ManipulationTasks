@@ -21,11 +21,9 @@
 
 #include "KukaIIWARedisDriver.h"
 #include "ButterworthFilter.h"
-#include "redis/KukaIIWARedisClient.h"
 
-#include <friLBRClient.h>
-#include <friUdpConnection.h>
-#include <friClientApplication.h>
+#include "friUdpConnection.h"
+#include "friClientApplication.h"
 #include <tinyxml2.h>
 
 #include <string>
