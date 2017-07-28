@@ -21,7 +21,7 @@
 
 #include "KukaIIWARedisDriver.h"
 #include "ButterworthFilter.h"
-#include "redis/RedisClient.h"
+#include "redis/KukaIIWARedisClient.h"
 
 #include <friLBRClient.h>
 #include <friUdpConnection.h>
@@ -196,7 +196,7 @@ KukaIIWARedisDriver::KukaIIWARedisDriver(const std::string& redis_ip, const int 
 			      << ". Controllers must be run AFTER the driver has initialized." << std::endl;
 		exit(1);
 	}
-	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tool::mass", tool_mass_);
+	redis_.set(KukaIIWA::KEY_PREFIX + "tool::mass", std::to_string(tool_mass_));
 	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tool::com", tool_com_);
 }
 
@@ -294,7 +294,7 @@ void KukaIIWARedisDriver::command()
 		} else if (fri_command_mode_ == KUKA::FRI::POSITION) {
 			q_des_ = redis_.getEigenMatrix(KEY_DESIRED_JOINT_POSITIONS);
 		}
-		tool_mass_ = redis_.getEigenMatrix(KukaIIWA::KEY_PREFIX + "tool::mass");
+		tool_mass_ = std::stod(redis_.get(KukaIIWA::KEY_PREFIX + "tool::mass"));
 		tool_com_  = redis_.getEigenMatrix(KukaIIWA::KEY_PREFIX + "tool::com");
 	} catch (std::exception& e) {
 		std::cout << e.what() << std::endl

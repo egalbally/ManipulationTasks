@@ -34,6 +34,9 @@ namespace RedisServer {
 
 	// Default server port
 	const int DEFAULT_PORT = 6379;
+
+	// Default Redis key prefix
+	static const std::string KEY_PREFIX = "cs225a::";
 }
 
 struct redisReplyDeleter {
