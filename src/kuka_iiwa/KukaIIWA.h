@@ -57,7 +57,7 @@ const Eigen::ArrayXd VELOCITY_LIMITS = Eigen::Array<double,DOF,1>(_ARR_VELOCITY_
 const Eigen::ArrayXd JERK_LIMITS     = Eigen::Array<double,DOF,1>(_ARR_JERK_LIMITS);
 
 // Height limits for the wrist [low high]
-const double POS_WRIST_LIMITS[2] = {0.45, 1.05};
+const double POS_WRIST_LIMITS[2] = {0.45, 2.05};
 
 }
 

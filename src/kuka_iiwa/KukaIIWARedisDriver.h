@@ -120,6 +120,8 @@ protected:
 	// Previous command torques
 	Eigen::VectorXd command_torques_prev_ = Eigen::VectorXd::Zero(KukaIIWA::DOF);
 
+	Eigen::VectorXd torque_offset_ = Eigen::VectorXd::Zero(KukaIIWA::DOF);
+
 	/***** Misc Member Variables *****/
 
 	// Redis client

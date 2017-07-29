@@ -196,6 +196,10 @@ KukaIIWARedisDriver::KukaIIWARedisDriver(const std::string& redis_ip, const int 
 	}
 	redis_.set(KukaIIWA::KEY_PREFIX + "tool::mass", std::to_string(tool_mass_));
 	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tool::com", tool_com_);
+
+	// Initialize torque offset
+	torque_offset_ << -0.5, 1.0, 0, -0.7, 0, 0.15, 0;
+	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "torque_offset", torque_offset_);
 }
 
 
@@ -294,6 +298,7 @@ void KukaIIWARedisDriver::command()
 		}
 		tool_mass_ = std::stod(redis_.get(KukaIIWA::KEY_PREFIX + "tool::mass"));
 		tool_com_  = redis_.getEigenMatrix(KukaIIWA::KEY_PREFIX + "tool::com");
+		torque_offset_ = redis_.getEigenMatrix(KukaIIWA::KEY_PREFIX + "torque_offset");
 	} catch (std::exception& e) {
 		std::cout << e.what() << std::endl
 		          << "Setting command torques and joint positions to 0." << std::endl;
@@ -326,7 +331,7 @@ void KukaIIWARedisDriver::command()
 
 	// COMPENSATE FOR THE OFFSET IN THE FIRST JOINT
 	if (fri_command_mode_ == KUKA::FRI::TORQUE) {
-		command_torques_(0) -= 0.3;
+		command_torques_ += torque_offset_;
 	}
 
 	// CHECK COMMAND

@@ -226,7 +226,7 @@ DemoProject::ControllerStatus DemoProject::alignBottleCap() {
 }
 
 /**
- * DemoProject::alignBottleCap()
+ * DemoProject::alignBottleCapExponentialDamping()
  * ----------------------------------------------------
  * Controller to move end effector to desired position.
  */
