@@ -426,7 +426,7 @@ void DemoProject::runLoop() {
 			
 			// Screw cap
 			case ALIGN_BOTTLE_CAP:
-				if (alignBottleCapExponentialDamping() == FINISHED) {
+				if (alignBottleCapExponentialDamping() == FINISHED) {  //alignBottleCap
 					cout << "Bottle cap aligned. Switching to check alignment." << endl;
 					controller_state_ = CHECK_ALIGNMENT;
 					t_alignment_ = timer_.elapsedTime();
@@ -437,7 +437,7 @@ void DemoProject::runLoop() {
 				switch (checkAlignment()) {
 					case FINISHED:
 						cout << "Bottle cap aligned. Switching to rewind cap." << endl;
-						controller_state_ = REWIND_BOTTLE_CAP;
+						controller_state_ = ALIGN_BOTTLE_CAP; //REWIND_BOTTLE_CAP
 						break;
 					case FAILED:
 						cout << "Bottle cap not aligned. Switching back to align bottle cap." << endl;

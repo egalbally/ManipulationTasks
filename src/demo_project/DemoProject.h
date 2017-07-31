@@ -193,6 +193,7 @@ protected:
 
 	// Default gains (used only when keys are nonexistent in Redis)
 	double kp_pos_ = 30;
+	//double kp_pos_ = 40;
 	double kv_pos_ = 0;
 	double kp_ori_ = 4;
 	double kv_ori_ = 0.5;
@@ -203,7 +204,8 @@ protected:
 	double kp_screw_ = 15;
 	double kv_screw_ = 4;
 	double kp_sliding_ = 1.5;
-	double kp_bias_ = 1.2;
+	// double kp_bias_ = 1.2; 
+	double kp_bias_ = 0.0; 
 
 	// gains for exponential damping during alignment
 	double exp_moreSpeed = 0.8;
