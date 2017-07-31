@@ -198,7 +198,7 @@ KukaIIWARedisDriver::KukaIIWARedisDriver(const std::string& redis_ip, const int 
 	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tool::com", tool_com_);
 
 	// Initialize torque offset
-	torque_offset_ << -0.5, 1.0, 0, -0.7, 0, 0.15, 0;
+	torque_offset_ << -0.5, 1.0, 0, -0.7, 0, 0.12, 0;
 	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "torque_offset", torque_offset_);
 }
 
@@ -315,17 +315,25 @@ void KukaIIWARedisDriver::command()
 	// ADD GRAVITY COMPENSATION FOR TOOL
 #ifdef USE_KUKA_LBR_DYNAMICS
 	if (fri_command_mode_ == KUKA::FRI::TORQUE) {
-		// Find tool Jacobian
-		Eigen::MatrixXd J = Eigen::MatrixXd::Zero(6, DOF);
+		// Find ee Jacobian
+		Eigen::MatrixXd J0 = Eigen::MatrixXd::Zero(6, DOF);
 		Eigen::VectorXd q_temp = q_;
-		dynamics_.getJacobian(J, q_temp, tool_com_, DOF);
+		dynamics_.getJacobian(J0, q_temp, kCenterOfMassEE, DOF);
+		Eigen::MatrixXd J_ee = J0.block(0,0,3,DOF);
+
+		// Find ee weight
+		Eigen::Vector3d F_grav_ee = Eigen::Vector3d(0, 0, -9.81 * kMassEE);
+
+		// Find tool Jacobian
+		q_temp = q_;
+		dynamics_.getJacobian(J0, q_temp, tool_com_, DOF);
+		Eigen::MatrixXd J_tool = J0.block(0,0,3,DOF);
 
 		// Find tool weight
-		Eigen::VectorXd F_grav_tool = Eigen::VectorXd::Zero(6);
-		F_grav_tool(2) = -9.81 * tool_mass_;
+		Eigen::Vector3d F_grav_tool = Eigen::Vector3d(0, 0, -9.81 * tool_mass_);
 
-		// Compensate for tool weight
-		command_torques_ -= J.transpose() * F_grav_tool;
+		// Compensate for ee + tool weight
+		command_torques_ -= J_ee.transpose() * F_grav_ee + J_tool.transpose() * F_grav_tool;
 	}
 #endif
 

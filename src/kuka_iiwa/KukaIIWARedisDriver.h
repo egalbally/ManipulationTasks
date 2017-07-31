@@ -162,6 +162,10 @@ protected:
 	// Tool properties
 	double tool_mass_ = 0;
 	Eigen::Vector3d tool_com_ = Eigen::Vector3d::Zero();
+
+	// Constant end effector properties
+	const double kMassEE = 0.2;
+	const Eigen::Vector3d kCenterOfMassEE = Eigen::Vector3d(0, 0, -0.081);
 #endif  // USE_KUKA_LBR_DYNAMICS
 
 };
