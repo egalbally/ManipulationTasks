@@ -20,7 +20,7 @@ const int DEFAULT_PORT = 30200;
 // Kuka degrees of freedom
 const int DOF = 7;
 
-// Path to the urdf model and tool file
+// Path to the default urdf model and tool file
 const char MODEL_FILENAME[] = "resources/kuka_iiwa_driver/kuka_iiwa.urdf";
 const char TOOL_FILENAME[]  = "resources/kuka_iiwa_driver/tool.xml";
 
@@ -28,33 +28,35 @@ const std::string KEY_PREFIX = RedisServer::KEY_PREFIX + "kuka_iiwa::";
 // Redis keys sent to robot
 const std::string KEY_COMMAND_TORQUES         = KEY_PREFIX + "actuators::fgc";
 const std::string KEY_DESIRED_JOINT_POSITIONS = KEY_PREFIX + "actuators::q_des";
+const std::string KEY_TOOL_MASS               = KEY_PREFIX + "tool::mass"; // Initialized with tool.xml
+const std::string KEY_TOOL_COM                = KEY_PREFIX + "tool::com";  // Initialized with tool.xml
 
 // Redis keys returned by robot
 const std::string KEY_SENSOR_TORQUES   = KEY_PREFIX + "sensors::torques";
 const std::string KEY_JOINT_POSITIONS  = KEY_PREFIX + "sensors::q";
 const std::string KEY_JOINT_VELOCITIES = KEY_PREFIX + "sensors::dq";
 
+// Factory function to create VectorXd of size DOF
+Eigen::VectorXd VectorXd(double x0, double x1, double x2, double x3, double x4, double x5, double x6) {
+	Eigen::VectorXd x(DOF);
+	x << x0, x1, x2, x3, x4, x5, x6;
+	return x;
+}
+
 // Default Kuka home position
-const double _ARR_HOME_POSITION[KukaIIWA::DOF]   = {90, -30, 0, 60, 0, -90, 0};
-const Eigen::VectorXd HOME_POSITION = Eigen::Map<const Eigen::VectorXd>(_ARR_HOME_POSITION, KukaIIWA::DOF) * M_PI/180.0;
+const Eigen::VectorXd HOME_POSITION  = VectorXd(90, -30, 0, 60, 0, -90, 0) * M_PI/180.0;
 
-// Safety limits (for initialization purposes only - use Eigen mappings instead)
+// Safety limits
 // TODO: Find real velocity and jerk limits
-const double _ARR_JOINT_LIMITS[KukaIIWA::DOF]    = {2.9670, 2.0944, 2.9670, 2.0944, 2.9670, 2.0944, 3.0543};
+const Eigen::ArrayXd JOINT_LIMITS    = VectorXd(2.9670, 2.0944, 2.9670, 2.0944, 2.9670, 2.0944, 3.0543).array() - 10.0 * M_PI/180.0;
 
-const double _ARR_VELOCITY_LIMITS[KukaIIWA::DOF] = {90.0, 90.0, 95.0, 125.0, 135.0, 170.0, 170.0};
-// const double ARR_VELOCITY_LIMITS[KukaIIWA::DOF] = {98.0, 98.0, 100.0, 130.0, 140.0, 180.0, 180.0}; // for LBR IIWA 7kg from specs
+// LBR IIWA 7kg specs: [98.0, 98.0, 100.0, 130.0, 140.0, 180.0, 180.0]
+const Eigen::ArrayXd VELOCITY_LIMITS = VectorXd(90.0, 90.0, 95.0, 125.0, 135.0, 170.0, 170.0) * M_PI/180.0;
 
-const double _ARR_TORQUE_LIMITS[KukaIIWA::DOF]   = {176.0, 176.0, 110.0, 110.0, 110.0, 40.0, 40.0}; // LBR iiwa 7 R800
-// const double _ARR_TORQUE_LIMITS[KukaIIWA::DOF]   = {320.0, 320.0, 176.0, 176.0, 110.0, 40.0, 40.0}; // LBR iiwa 14 R820
+const Eigen::ArrayXd TORQUE_LIMITS   = VectorXd(176.0, 176.0, 110.0, 110.0, 110.0, 40.0, 40.0); // LBR IIWA 7 R800
+// const Eigen::ArrayXd TORQUE_LIMITS   = VectorXd(320.0, 320.0, 176.0, 176.0, 110.0, 40.0, 40.0); // LBR IIWA 14 R820
 
-const double _ARR_JERK_LIMITS[KukaIIWA::DOF]     = {8.8, 8.8, 5.5, 5.5, 5.5, 2.0, 2.0};
-
-// Eigen mappings to safety limits
-const Eigen::ArrayXd JOINT_LIMITS    = Eigen::Array<double,DOF,1>(_ARR_JOINT_LIMITS) - 10.0 * M_PI/180.0;
-const Eigen::ArrayXd TORQUE_LIMITS   = Eigen::Array<double,DOF,1>(_ARR_TORQUE_LIMITS);
-const Eigen::ArrayXd VELOCITY_LIMITS = Eigen::Array<double,DOF,1>(_ARR_VELOCITY_LIMITS) * M_PI/180.0;
-const Eigen::ArrayXd JERK_LIMITS     = Eigen::Array<double,DOF,1>(_ARR_JERK_LIMITS);
+const Eigen::ArrayXd JERK_LIMITS     = VectorXd(8.8, 8.8, 5.5, 5.5, 5.5, 2.0, 2.0);
 
 // Height limits for the wrist [low high]
 const double POS_WRIST_LIMITS[2] = {0.45, 2.05};

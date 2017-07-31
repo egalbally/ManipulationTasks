@@ -194,12 +194,10 @@ KukaIIWARedisDriver::KukaIIWARedisDriver(const std::string& redis_ip, const int 
 			      << ". Controllers must be run AFTER the driver has initialized." << std::endl;
 		exit(1);
 	}
-	redis_.set(KukaIIWA::KEY_PREFIX + "tool::mass", std::to_string(tool_mass_));
-	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tool::com", tool_com_);
 
-	// Initialize torque offset
-	torque_offset_ << -0.5, 1.0, 0, -0.7, 0, 0.12, 0;
-	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "torque_offset", torque_offset_);
+	// Initialize tool parameters from tool.xml
+	redis_.set(KukaIIWA::KEY_TOOL_MASS, std::to_string(tool_mass_));
+	redis_.setEigenMatrix(KukaIIWA::KEY_TOOL_COM, tool_com_);
 }
 
 
@@ -250,55 +248,57 @@ void KukaIIWARedisDriver::waitForCommand()
 
 void KukaIIWARedisDriver::command()
 {
-	// In command(), the joint values have to be sent. Which is done by calling
-	// the base method.
+	// Send joint values in the base command
 	LBRClient::command();
 
-	// check for control mode change
+	// Check for control mode change
 	KUKA::FRI::EClientCommandMode fri_command_mode_next = robotState().getClientCommandMode();
 	if (fri_command_mode_next != fri_command_mode_) {
 		fri_command_mode_ = fri_command_mode_next;
 		printCommandMode(fri_command_mode_);
 	}
 
-	// get the position and measure torque
+	// Get the position and measured torque
 	memcpy(arr_q_, robotState().getMeasuredJointPosition(), DOF * sizeof(double));
 	memcpy(arr_sensor_torques_, robotState().getMeasuredTorque(), DOF * sizeof(double));
 
-	// get the time
+	// Get the time
 	timespec time;
 	time.tv_sec = robotState().getTimestampSec();
 	time.tv_nsec = robotState().getTimestampNanoSec();
 
-	// get the velocity
+	// Get the velocity
 	if (t_prev_.tv_sec == 0 && t_prev_.tv_nsec == 0) {
-		// if not initialized, set to zero
+		// If not initialized, set to zero
 		dq_.setZero();
 		dq_filtered_.setZero();
 	} else {
-		// velocity = (position - last position)/(time - last time)
+		// Velocity = (position - last position)/(time - last time)
 		double dt = elapsedTime(t_prev_, time);
 		dq_ = (q_ - q_prev_) / dt;
 		dq_filtered_ = velocity_filter_.update(dq_);
 	}
 
-	// Send positions, velocities and sensed torques
+	// Send positions, velocities and sensed torques to Redis
 	redis_.pipeset({
 		{KEY_JOINT_POSITIONS,  RedisClient::encodeEigenMatrix(q_)},
 		{KEY_JOINT_VELOCITIES, RedisClient::encodeEigenMatrix(dq_filtered_)},
 		{KEY_SENSOR_TORQUES,   RedisClient::encodeEigenMatrix(sensor_torques_)}
 	});
 
-	// Get commanded torques or joint positions
+	// Read values from Redis
 	try {
+		// Get commanded torques or joint positions
 		if (fri_command_mode_ == KUKA::FRI::TORQUE) {
 			command_torques_ = redis_.getEigenMatrix(KEY_COMMAND_TORQUES);
 		} else if (fri_command_mode_ == KUKA::FRI::POSITION) {
 			q_des_ = redis_.getEigenMatrix(KEY_DESIRED_JOINT_POSITIONS);
 		}
-		tool_mass_ = std::stod(redis_.get(KukaIIWA::KEY_PREFIX + "tool::mass"));
-		tool_com_  = redis_.getEigenMatrix(KukaIIWA::KEY_PREFIX + "tool::com");
-		torque_offset_ = redis_.getEigenMatrix(KukaIIWA::KEY_PREFIX + "torque_offset");
+
+		// Get tool parameters
+		auto tool_vals = redis_.pipeget({KukaIIWA::KEY_TOOL_MASS, KukaIIWA::KEY_TOOL_COM});
+		tool_mass_ = std::stod(tool_vals[0]);
+		tool_com_  = RedisClient::decodeEigenMatrix(tool_vals[1]);
 	} catch (std::exception& e) {
 		std::cout << e.what() << std::endl
 		          << "Setting command torques and joint positions to 0." << std::endl;
@@ -312,7 +312,7 @@ void KukaIIWARedisDriver::command()
 		exit_counter_--;
 	}
 
-	// ADD GRAVITY COMPENSATION FOR TOOL
+	// Add gravity compensation for tool
 #ifdef USE_KUKA_LBR_DYNAMICS
 	if (fri_command_mode_ == KUKA::FRI::TORQUE) {
 		// Find ee Jacobian
@@ -337,12 +337,12 @@ void KukaIIWARedisDriver::command()
 	}
 #endif
 
-	// COMPENSATE FOR THE OFFSET IN THE FIRST JOINT
+	// Compensate for torque offsets
 	if (fri_command_mode_ == KUKA::FRI::TORQUE) {
-		command_torques_ += torque_offset_;
+		command_torques_ += kTorqueOffset;
 	}
 
-	// CHECK COMMAND
+	// Check command
 	switch (fri_command_mode_) {
 		case KUKA::FRI::NO_COMMAND_MODE:
 			break;
@@ -416,7 +416,7 @@ void KukaIIWARedisDriver::command()
 			break;
 	}
 
-	// SEND COMMAND
+	// Send command
 	switch (fri_command_mode_) {
 		case KUKA::FRI::NO_COMMAND_MODE:
 			break;

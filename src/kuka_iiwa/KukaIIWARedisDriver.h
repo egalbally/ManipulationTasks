@@ -80,11 +80,19 @@ protected:
 	/***** Constants *****/
 
 	// Kv for damped exit
-	const double arr_kExitKv[KukaIIWA::DOF] = {8, 8, 5, 5, 5, 2, 2};
-	const Eigen::ArrayXd kExitKv = Eigen::Array<double,7,1>(arr_kExitKv);
+	const Eigen::ArrayXd kExitKv = KukaIIWA::VectorXd(8, 8, 5, 5, 5, 2, 2);
 
 	// Cutoff frequency for velocity filter, in the range of (0, 0.5) of sampling frequency
 	const double kCutoffFreq = 0.1;
+
+	// Torque offsets
+	const Eigen::VectorXd kTorqueOffset = KukaIIWA::VectorXd(-0.5, 1.0, 0.0, -0.7, 0.0, 0.12, 0.0);
+
+#ifdef USE_KUKA_LBR_DYNAMICS
+	// Constant end effector properties (without tool.xml)
+	const double kMassEE = 0.2;
+	const Eigen::Vector3d kCenterOfMassEE = Eigen::Vector3d(0, 0, -0.081);
+#endif  // USE_KUKA_LBR_DYNAMICS
 
 	/***** State Variables *****/
 
@@ -119,8 +127,6 @@ protected:
 
 	// Previous command torques
 	Eigen::VectorXd command_torques_prev_ = Eigen::VectorXd::Zero(KukaIIWA::DOF);
-
-	Eigen::VectorXd torque_offset_ = Eigen::VectorXd::Zero(KukaIIWA::DOF);
 
 	/***** Misc Member Variables *****/
 
@@ -162,10 +168,6 @@ protected:
 	// Tool properties
 	double tool_mass_ = 0;
 	Eigen::Vector3d tool_com_ = Eigen::Vector3d::Zero();
-
-	// Constant end effector properties
-	const double kMassEE = 0.2;
-	const Eigen::Vector3d kCenterOfMassEE = Eigen::Vector3d(0, 0, -0.081);
 #endif  // USE_KUKA_LBR_DYNAMICS
 
 };
