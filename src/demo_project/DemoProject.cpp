@@ -50,7 +50,8 @@ void DemoProject::readRedisValues() {
 	Eigen::VectorXd F_sensor_6d = redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE);
 	
 	// Offset moment bias
-	F_sensor_6d(3) += 0.2;
+	F_sensor_6d.head(3) += Eigen::Vector3d(0, 0.6, 0);
+	F_sensor_6d.tail(3) += Eigen::Vector3d(0.175, 0.21, 0.015);
 
 	// Transform sensor measurements to EE frame
 	R_sensor_to_ee_ << -1/sqrt(2), -1/sqrt(2), 	0,
@@ -61,9 +62,9 @@ void DemoProject::readRedisValues() {
 	M_sensor_ = R_sensor_to_ee_ * F_sensor_6d.tail(3);
 
 	// Set moments to zero when they are outside of a range to avoid vibrations
-	for (int i = 0; i<3;i++){
-		if (M_sensor_(i) < 0.13 && M_sensor_(i) > -0.13){ M_sensor_(i) = 0;}
-	}
+	// for (int i = 0; i<3;i++){
+	// 	if (M_sensor_(i) < 0.13 && M_sensor_(i) > -0.13){ M_sensor_(i) = 0;}
+	// }
 	
 	Eigen::VectorXd F_controller(6); //forces in EE and capped moments in EE
 	F_controller << F_sensor_, M_sensor_;
