@@ -45,13 +45,14 @@ void DemoProject::readRedisValues() {
 	exp_lessDamping = stod(redis_.get(KEY_LESS_DAMPING));
 	kp_ori_exp = stod(redis_.get(KEY_KP_ORIENTATION_EXP));
 	kv_ori_exp = stod(redis_.get(KEY_KV_ORIENTATION_EXP));
+	ki_ori_exp = stod(redis_.get(KEY_KI_ORIENTATION_EXP));
 	kp_pos_exp = stod(redis_.get(KEY_KP_POSITION_EXP));
 
 	Eigen::VectorXd F_sensor_6d = redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE);
 	
 	// Offset moment bias
-	F_sensor_6d.head(3) += Eigen::Vector3d(0, 0.6, 0);
-	F_sensor_6d.tail(3) += Eigen::Vector3d(0.175, 0.21, 0.015);
+	F_sensor_6d.head(3) += Eigen::Vector3d(-0.15, 0.37, 0);
+	F_sensor_6d.tail(3) += Eigen::Vector3d(0.19, 0., 0.);
 
 	// Transform sensor measurements to EE frame
 	R_sensor_to_ee_ << -1/sqrt(2), -1/sqrt(2), 	0,
@@ -106,7 +107,7 @@ void DemoProject::updateModel() {
 	theta = acos(abs(F_sensor_.dot(Eigen::Vector3d(0,0,1))) / F_sensor_.norm());
 
 	// Jacobians
-	robot->J_0(J_, "link6", Eigen::Vector3d::Zero());
+	robot->J_0(J_, "link6", Eigen::Vector3d(0,0,0.11));
 	robot->Jv(Jv_, "link6", Eigen::Vector3d::Zero());
 	robot->Jv(Jv_cap_, "link6", Eigen::Vector3d(0,0,0.11));
 	robot->nullspaceMatrix(N_, J_);
@@ -246,9 +247,15 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapExponentialDamping() {
 	Eigen::Vector3d ddx =  -kp_pos_ * x_err - kv_pos_ * dx_err;
 
 	// Orientation
-	Eigen::Vector3d dPhi;
-	dPhi = -R_ee_to_base_ * M_sensor_;
-	Eigen::Vector3d dw = -(1-exp(-exp_moreSpeed*theta)) *kp_ori_ * dPhi - (exp(-exp_lessDamping*theta)*kv_ori_) * w_;
+	Eigen::Vector3d dPhi = -R_ee_to_base_ * M_sensor_;
+	Eigen::Vector3d dPhi_dt = dPhi / kControlFreq;
+	integral_dPhi_ += dPhi_dt;// - vec_dPhi_[idx_vec_dPhi_];
+	vec_dPhi_[idx_vec_dPhi_] = dPhi_dt;
+	idx_vec_dPhi_ = (idx_vec_dPhi_ + 1) % kIntegraldPhiWindow;
+	redis_.setEigenMatrix("cs225a::kuka_iiwa::integral_dPhi", integral_dPhi_);
+	redis_.setEigenMatrix("cs225a::kuka_iiwa::dPhi", dPhi);
+
+	Eigen::Vector3d dw = -(1-exp(-exp_moreSpeed*theta)) *kp_ori_ * dPhi - (exp(-exp_lessDamping*theta)*kv_ori_) * w_ - ki_ori_exp * integral_dPhi_;
 	Eigen::VectorXd ddxdw(6);
 	ddxdw << ddx, dw;
 
@@ -379,6 +386,7 @@ void DemoProject::initialize() {
 	redis_.set(KEY_KP_BIAS, to_string(kp_bias_));
 	redis_.set(KEY_KP_ORIENTATION_EXP, to_string(kp_ori_exp));
 	redis_.set(KEY_KV_ORIENTATION_EXP, to_string(kv_ori_exp));
+	redis_.set(KEY_KI_ORIENTATION_EXP, to_string(ki_ori_exp));
 	redis_.set(KEY_KP_POSITION_EXP, to_string(kp_pos_exp));
 	redis_.set(KEY_MORE_SPEED, to_string(exp_moreSpeed));
 	redis_.set(KEY_LESS_DAMPING, to_string(exp_lessDamping));

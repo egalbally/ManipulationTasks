@@ -46,6 +46,7 @@ public:
 		KEY_UI_FLAG         (kRedisKeyPrefix + robot_name + "::ui::flag"),
 		KEY_KP_ORIENTATION_EXP(kRedisKeyPrefix + robot_name + "::tasks::kp_ori_exp"),
 	    KEY_KV_ORIENTATION_EXP(kRedisKeyPrefix + robot_name + "::tasks::kv_ori_exp"),
+	    KEY_KI_ORIENTATION_EXP(kRedisKeyPrefix + robot_name + "::tasks::ki_ori_exp"),
 	    KEY_KP_POSITION_EXP (kRedisKeyPrefix + robot_name + "::tasks::kp_pos_exp"),
 	    KEY_MORE_SPEED(kRedisKeyPrefix + robot_name + "::tasks::more_speed"),
 	    KEY_LESS_DAMPING(kRedisKeyPrefix + robot_name + "::tasks::less_damping"),
@@ -76,6 +77,10 @@ public:
 		// Desired end effector position
 		x_des_ << -0.1, 0.4, 0.7;
 		dx_des_.setZero();
+
+		for (auto& dPhi : vec_dPhi_) {
+			dPhi.setZero();
+		}
 	}
 
 	/***** Public functions *****/
@@ -114,6 +119,8 @@ protected:
 	const int kControlFreq = 1000;         // 1 kHz control loop
 	const int kInitializationPause = 1e6;  // 1ms pause before starting control loop
 
+	const int kIntegraldPhiWindow = 2000;
+
 	const std::string kRedisHostname = "127.0.0.1";
 	const int kRedisPort = 6379;
 
@@ -142,6 +149,7 @@ protected:
 	const std::string KEY_KP_BIAS;
 	const std::string KEY_KP_ORIENTATION_EXP;
 	const std::string KEY_KV_ORIENTATION_EXP;
+	const std::string KEY_KI_ORIENTATION_EXP;
 	const std::string KEY_KP_POSITION_EXP;
 	const std::string KEY_MORE_SPEED;
 	const std::string KEY_LESS_DAMPING;
@@ -188,6 +196,9 @@ protected:
 	Eigen::Vector3d F_sensor_, M_sensor_;
 	Eigen::Matrix3d R_ee_to_base_;
 	Eigen::Matrix3d R_sensor_to_ee_;
+	std::vector<Eigen::Vector3d> vec_dPhi_ = std::vector<Eigen::Vector3d>(kIntegraldPhiWindow);
+	int idx_vec_dPhi_ = 0;
+	Eigen::Vector3d integral_dPhi_ = Eigen::Vector3d::Zero();
 	double t_alignment_;
 	const double kAlignmentWait = 1;
 
@@ -208,11 +219,12 @@ protected:
 	double kp_bias_ = 0.0; 
 
 	// gains for exponential damping during alignment
-	double exp_moreSpeed = 0.8;
+	double exp_moreSpeed = 2; //.8
 	double exp_lessDamping = 2;
 	double kp_ori_exp = 15;
-	double kv_ori_exp = 10;
-	double kp_pos_exp = 15;	
+	double kv_ori_exp = 20; //10
+	double ki_ori_exp = 1.5;
+	double kp_pos_exp = 30;	//15
 
 	// angle between contact surface normal and cap normal
 	double theta;
