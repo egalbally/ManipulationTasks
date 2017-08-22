@@ -45,6 +45,7 @@ const std::string KV_JOINT_KEY = "sai2::iiwaForceControl::iiwaBot::tasks::kv_joi
 #define CALIBRATION_SENSING 1
 #define CALIBRATION_MASS_CALCULATION 2
 #define CALIBRATION_HOLD_POSITION 3
+
 #define RUN_BOT 1
 #define RUN_SIM 0
 
@@ -70,7 +71,7 @@ int main() {
 
 	// start redis client
 	RedisClient redis_client;
-	client.connect();
+	redis_client.connect();
 
 	// set up signal handler (CTRL+C)
 	signal(SIGABRT, &sighandler);
@@ -135,7 +136,7 @@ int main() {
 	Eigen::VectorXd ee_sensed_force_and_moment = Eigen::VectorXd::Zero(6); 
 	
 	const int numCalibrationLocations = 3;
-	const int NUMBER_CALIBRATION_MEASUREMENTS = 100;
+	bool CalculatingBiasFlag = 1;
 
 	// initial calibration state
 	int calibrationState = CALIBRATION_MOVING2LOCATION;
@@ -144,7 +145,7 @@ int main() {
 	double CAL_POS_TOLERANCE = 0.1;
 	double CAL_VEL_TOLERANCE = 0.1;
 	double numMeasurements = 0;
-	double maxNumMeasurements = NUMBER_CALIBRATION_MEASUREMENTS;
+	const int maxNumMeasurements = 100;
 	
 	// desired joint positions and velocities
 	Eigen::VectorXd q_calDes = Eigen::VectorXd::Zero(dof); 
@@ -154,35 +155,31 @@ int main() {
 
 	Eigen::Vector3d Fs;
 	Eigen::Vector3d Ms;
+	Eigen::Vector3d Fbias;
+	Eigen::Vector3d Mbias;
 	Eigen::VectorXd Fs_x(maxNumMeasurements);   
 	Eigen::VectorXd Fs_y(maxNumMeasurements); 
 	Eigen::VectorXd Fs_z(maxNumMeasurements); 
 	Eigen::VectorXd Ms_x(maxNumMeasurements); 
 	Eigen::VectorXd Ms_y(maxNumMeasurements); 
 	Eigen::VectorXd Ms_z(maxNumMeasurements);
-	Eigen::VectorXd average_Fs_Ms(6*numCalibrationLocations,1);
-	Eigen::VectorXd average_Fs_Ms_0(6,1);
-	Eigen::VectorXd average_Fs_Ms_1(6,1);
-	Eigen::VectorXd average_Fs_Ms_2(6,1);
-	
-	Eigen::Matrix3d RotFromBase2EE;
+	Eigen::VectorXd averageMs(3*numCalibrationLocations,1);
+	Eigen::Vector3d Ms_0;
+	Eigen::Vector3d Ms_1;
+	Eigen::Vector3d Ms_2;
+	double Fs_0_mod = 0;
+	double Fs_1_mod = 0;
+	double Fs_2_mod = 0;
 
 	Eigen::Vector3d g_vec_inBase;
-	Eigen::Vector3d g_vec_inSensor;
 	
-	Eigen::MatrixXd gravityMatrix(6*numCalibrationLocations,4);
-	Eigen::MatrixXd gravityMatrix0(6,4);
-	Eigen::MatrixXd gravityMatrix1(6,4);
-	Eigen::MatrixXd gravityMatrix2(6,4);
-	Eigen::MatrixXd gravityMatrix_leftInv(4,6*numCalibrationLocations);
+	Eigen::MatrixXd forceMatrix(3*numCalibrationLocations,3);
+	Eigen::Matrix3d forceMatrix0;
+	Eigen::Matrix3d forceMatrix1;
+	Eigen::Matrix3d forceMatrix2;
+	Eigen::MatrixXd forceMatrix_leftInv(3,3*numCalibrationLocations);
 	
-	Eigen::VectorXd massAndCOM(4);
 	Eigen::Vector3d com_pos;
-	Eigen::VectorXd calculatedMassVector(numCalibrationLocations);
-	Eigen::VectorXd comPos_x(numCalibrationLocations);
-	Eigen::VectorXd comPos_y(numCalibrationLocations);			
-	Eigen::VectorXd comPos_z(numCalibrationLocations);
-
 	// ------------------------------------------------------------------
 	
 	while (runloop) {
@@ -248,19 +245,17 @@ int main() {
 			Ms_y(numMeasurements) = ee_sensed_moment(1);
 			Ms_z(numMeasurements) = ee_sensed_moment(2);
 
-			// cout<< "Fs_x" << Fs_x(numMeasurements) << endl;
-			// cout<< "Fs_y" << Fs_y(numMeasurements) << endl;
-			// cout<< "Fs_z" << Fs_z(numMeasurements) << endl;
-			// cout<< "Ms_x" << Ms_x(numMeasurements) << endl;
-			// cout<< "Ms_y" << Ms_y(numMeasurements) << endl;
-			// cout<< "Ms_z" << Ms_z(numMeasurements) << endl;
-
 			// Switch to calculation state when you have saved the desired num of values 
 			numMeasurements++;
-			if (numMeasurements == NUMBER_CALIBRATION_MEASUREMENTS){
-				calibrationState = CALIBRATION_MASS_CALCULATION;
-				cout<< "pos #" << posNumber << " -finished measurements"<<endl;
+
+			if (numMeasurements == maxNumMeasurements){
 				numMeasurements = 0;
+				if (CalculatingBiasFlag){
+					calibrationState = CALIBRATION_HOLD_POSITION;
+				}else{
+					calibrationState = CALIBRATION_MASS_CALCULATION;
+					cout<< "pos #" << posNumber << " -finished measurements"<<endl;	
+				}	
 			}
 
 		} else if (calibrationState == CALIBRATION_MASS_CALCULATION) {
@@ -275,51 +270,47 @@ int main() {
 			Ms<< Ms_x.sum()/Ms_x.size(),
 				 Ms_y.sum()/Ms_y.size(),
 				 Ms_z.sum()/Ms_z.size();
-		
+			
+			Fs = Fs - Fbias;
+			Ms = Ms - Mbias;
+
 			if(posNumber == 0){
-		 			average_Fs_Ms_0 << Fs, Ms;
+		 			Ms_0 = Ms;
+		 			Fs_0_mod = Fs.norm();
  			}else if(posNumber ==1){
- 					average_Fs_Ms_1 << Fs, Ms;
+ 					Ms_1 = Ms;
+		 			Fs_1_mod = Fs.norm();
 	 		}else if(posNumber ==2){
-		 			average_Fs_Ms_2 << Fs, Ms;
+		 			Ms_2 = Ms;
+		 			Fs_2_mod = Fs.norm();
 	 		}
 			cout<< "pos #" << posNumber << " Fs, Ms: " << Fs.transpose() << Ms.transpose() <<endl;
 
- 			// (3) Calculate A (gravityMatrix) for the current location
+ 			// (3) Calculate A (forceMatrix) for the current location
  			//			AX = b where 
  			//				A --> gravity related matrix
  			//				X --> mass and com vector
  			//				b --> Fs, Ms vector
- 			robot->rotation(RotFromBase2EE, ee_link_name);
- 			//cout<< "R " << RotFromBase2EE << endl;
+ 			
+ 			//robot->rotation(RotFromBase2EE, ee_link_name);
  			g_vec_inBase << 0.0, 0.0, -9.81;
- 			g_vec_inSensor = RotFromBase2EE.transpose() * g_vec_inBase;
- 			g_vec_inSensor << g_vec_inSensor(0), g_vec_inSensor(1), -g_vec_inSensor(2); //because the force sensor frame is the opposite to that of the EE
-			// cout<< "g " << g_vec_inSensor << endl;
-			// cout<<"g norm " << g_vec_inSensor.norm()<<endl;
-
+ 			double g = g_vec_inBase.norm();
+ 			//g_vec_inSensor = RotFromBase2EE.transpose() * g_vec_inBase;
+ 			//g_vec_inSensor << g_vec_inSensor(0), g_vec_inSensor(1), -g_vec_inSensor(2); //because the force sensor frame is the opposite to that of the EE
+			
  			if(posNumber == 0){
-		 			gravityMatrix0 << g_vec_inSensor(0),		0,						0,						0,
-		 							  g_vec_inSensor(1),		0,						0,						0,
-		 							  g_vec_inSensor(2),		0,						0,						0,	
-		 							  0,						0,						g_vec_inSensor(2),		-g_vec_inSensor(1),
-		 							  0,						-g_vec_inSensor(2),		0, 						g_vec_inSensor(0),
-		 							  0,						g_vec_inSensor(1),		-g_vec_inSensor(0),		0;
+		 			forceMatrix0 	<< 0,						Fs(2),					-Fs(1),
+		 							   	-Fs(2),					0, 						Fs(0),
+		 							   	Fs(1),					-Fs(0),					0;
  			}else if(posNumber ==1){
- 					gravityMatrix1 << g_vec_inSensor(0),		0,						0,						0,
-		 							  g_vec_inSensor(1),		0,						0,						0,
-		 							  g_vec_inSensor(2),		0,						0,						0,	
-		 							  0,						0,						g_vec_inSensor(2),		-g_vec_inSensor(1),
-		 							  0,						-g_vec_inSensor(2),		0, 						g_vec_inSensor(0),
-		 							  0,						g_vec_inSensor(1),		-g_vec_inSensor(0),		0;
+ 					forceMatrix1 	<< 0,						Fs(2),					-Fs(1),
+		 							   	-Fs(2),					0, 						Fs(0),
+		 							   	Fs(1),					-Fs(0),					0;
 	 		}else if(posNumber ==2){
-		 			gravityMatrix2 << g_vec_inSensor(0),		0,						0,						0,
-		 							  g_vec_inSensor(1),		0,						0,						0,
-		 							  g_vec_inSensor(2),		0,						0,						0,	
-		 							  0,						0,						g_vec_inSensor(2),		-g_vec_inSensor(1),
-		 							  0,						-g_vec_inSensor(2),		0, 						g_vec_inSensor(0),
-		 							  0,						g_vec_inSensor(1),		-g_vec_inSensor(0),		0;
-	 		}
+		 			forceMatrix2 	<< 0,						Fs(2),					-Fs(1),
+		 							   	-Fs(2),					0, 						Fs(0),
+		 							   	Fs(1),					-Fs(0),					0;
+		 	}
  			
  			// (4) If you haven't been to all calibration locations -> update desired configuration and move to next location 
  			cout<< "pos #" << posNumber << " -finished calculations"<<endl;
@@ -348,23 +339,18 @@ int main() {
 				command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
 
 				// Calculate mass and COM 
-				gravityMatrix << gravityMatrix0, gravityMatrix1, gravityMatrix2;
-				average_Fs_Ms << average_Fs_Ms_0, average_Fs_Ms_1, average_Fs_Ms_2;
-	 			
-	 			gravityMatrix_leftInv = ((gravityMatrix.transpose()*gravityMatrix).inverse()) * gravityMatrix.transpose();
-	 			massAndCOM = gravityMatrix_leftInv * average_Fs_Ms; //X = Ainv * b
-	 			double mass = massAndCOM(0);
-	 			com_pos << massAndCOM(1)/mass,
-	 					   massAndCOM(2)/mass,
-	 					   massAndCOM(3)/mass;
+				forceMatrix << forceMatrix0, forceMatrix1, forceMatrix2;		
+	 			forceMatrix_leftInv = ((forceMatrix.transpose()*forceMatrix).inverse()) * forceMatrix.transpose();
+	 			averageMs << Ms_0, Ms_1, Ms_2;
+
+	 			double mass = (Fs_0_mod + Fs_1_mod + Fs_2_mod)/(3*g);
+	 			com_pos = -forceMatrix_leftInv * averageMs;
 
 				// end of calibration message
  				cout << " DONE CALIBRATING! =) " << endl;	
 				cout << " mass:  " << mass << endl;	
 				cout << " distance (sensor to object):  " << com_pos.norm() << endl;	
 				cout << " com vector:  " << com_pos << endl;	
-				cout << " solution vector:  " << massAndCOM << endl;	
-
 
 				//Move to next position
  				calibrationState =  CALIBRATION_HOLD_POSITION;
@@ -373,6 +359,26 @@ int main() {
 
 		} else if (calibrationState == CALIBRATION_HOLD_POSITION) {	
 				command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
+
+				if(CalculatingBiasFlag)
+				{
+					Fs<< Fs_x.sum()/Fs_x.size(),
+					 	Fs_y.sum()/Fs_y.size(),
+					 	Fs_z.sum()/Fs_z.size();
+
+					Ms<< Ms_x.sum()/Ms_x.size(),
+						Ms_y.sum()/Ms_y.size(),
+						Ms_z.sum()/Ms_z.size();
+					
+					Fbias = Fs;
+					Mbias = Ms;
+					CalculatingBiasFlag = 0;
+
+					if(cin.rdbuf()->in_avail()){ //this tells us if a key has been pressed
+						getchar();
+						calibrationState = CALIBRATION_MOVING2LOCATION;
+					}
+				}
 		}
 
 		redis_client.setEigenMatrix(JOINT_TORQUES_COMMANDED_KEY, command_torques);

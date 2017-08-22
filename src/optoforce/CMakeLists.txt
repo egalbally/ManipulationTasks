@@ -27,6 +27,7 @@ set (OPTOFORCE_DRIVER_SOURCE
 
 #Set the executable to be built and its required linked libraries (the ones in the /usr/lib dir)
 add_executable (${PROJECT_NAME} ${CS225A_COMMON_SOURCE} ${OPTOFORCE_DRIVER_SOURCE})
+add_executable (optoforce_calibration ${CS225A_COMMON_SOURCE} OptoforceCalibration.cpp)
 
 # optoforce
 set(OMD_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/LINUX_API_V1.5.1/include/)
@@ -37,3 +38,4 @@ SET(FILTERS_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/filters/)
 
 include_directories(${OMD_INCLUDE_DIR} ${FILTERS_INCLUDE_DIR})
 target_link_libraries(${PROJECT_NAME} ${CS225A_COMMON_LIBRARIES} ${OMD_LIBRARIES})
+target_link_libraries(optoforce_calibration ${CS225A_COMMON_LIBRARIES} ${OMD_LIBRARIES})
