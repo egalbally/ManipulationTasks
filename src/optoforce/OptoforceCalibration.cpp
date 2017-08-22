@@ -44,11 +44,12 @@ const std::string KV_JOINT_KEY = "sai2::iiwaForceControl::iiwaBot::tasks::kv_joi
 #define CALIBRATION_MOVING2LOCATION 0
 #define CALIBRATION_SENSING 1
 #define CALIBRATION_MASS_CALCULATION 2
+#define CALIBRATION_HOLD_POSITION 3
 #define RUN_BOT 1
 #define RUN_SIM 0
 
 // Change when running in sim or real robot!!!
-bool robotOrSim = RUN_SIM;
+bool robotOrSim = RUN_BOT;
 
 // controller global variables
 bool runloop = true;
@@ -125,13 +126,16 @@ int main() {
 	// link variable names
 	string wrist_link_name = "link5";
 	string ee_link_name = "link6";
-	
+
 	// sensed forces and moments
 	Eigen::VectorXd command_torques = Eigen::VectorXd::Zero(dof);
 	Eigen::VectorXd ee_sensed_force = Eigen::VectorXd::Zero(3);
 	Eigen::VectorXd ee_sensed_moment = Eigen::VectorXd::Zero(3);
 	Eigen::VectorXd ee_sensed_force_inEE = Eigen::VectorXd::Zero(3);
 	Eigen::VectorXd ee_sensed_force_and_moment = Eigen::VectorXd::Zero(6); 
+	
+	const int numCalibrationLocations = 3;
+	const int NUMBER_CALIBRATION_MEASUREMENTS = 100;
 
 	// initial calibration state
 	int calibrationState = CALIBRATION_MOVING2LOCATION;
@@ -140,16 +144,13 @@ int main() {
 	double CAL_POS_TOLERANCE = 0.1;
 	double CAL_VEL_TOLERANCE = 0.1;
 	double numMeasurements = 0;
-	double maxNumMeasurements = 1000;
+	double maxNumMeasurements = NUMBER_CALIBRATION_MEASUREMENTS;
 	
 	// desired joint positions and velocities
 	Eigen::VectorXd q_calDes = Eigen::VectorXd::Zero(dof); 
 	q_calDes << 90, -30, 0, 60, 0, -90, 0; 
 	q_calDes *= M_PI / 180.0;
 	Eigen::VectorXd qd_calDes = Eigen::VectorXd::Zero(dof); 
-	
-	static const int numCalibrationLocations = 3;
-	static const int NUMBER_CALIBRATION_MEASUREMENTS = 1000;
 
 	Eigen::Vector3d Fs;
 	Eigen::Vector3d Ms;
@@ -165,7 +166,6 @@ int main() {
 	Eigen::VectorXd average_Fs_Ms_2(6,1);
 	
 	Eigen::Matrix3d RotFromBase2EE;
-	robot->rotation(RotFromBase2EE, ee_link_name);
 
 	Eigen::Vector3d g_vec_inBase;
 	Eigen::Vector3d g_vec_inSensor;
@@ -189,11 +189,10 @@ int main() {
 		timer.waitForNextLoop();
 
 		// read from Redis
-robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
-	robot->_dq = redis_client.getEigenMatrix(JOINT_VELOCITIES_KEY);
-
+		robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
+		robot->_dq = redis_client.getEigenMatrix(JOINT_VELOCITIES_KEY);
 		if(robotOrSim == RUN_BOT)
-			redis_client.getEigenMatrixDerived(EE_FORCE_SENSOR_FORCE_KEY, ee_sensed_force_and_moment); //robot
+			ee_sensed_force_and_moment = redis_client.getEigenMatrix(EE_FORCE_SENSOR_FORCE_KEY); //robot
 		else if(robotOrSim == RUN_SIM)
 			ee_sensed_force_and_moment.setZero(); //sim
 
@@ -249,6 +248,13 @@ robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
 			Ms_y(numMeasurements) = ee_sensed_moment(1);
 			Ms_z(numMeasurements) = ee_sensed_moment(2);
 
+			// cout<< "Fs_x" << Fs_x(numMeasurements) << endl;
+			// cout<< "Fs_y" << Fs_y(numMeasurements) << endl;
+			// cout<< "Fs_z" << Fs_z(numMeasurements) << endl;
+			// cout<< "Ms_x" << Ms_x(numMeasurements) << endl;
+			// cout<< "Ms_y" << Ms_y(numMeasurements) << endl;
+			// cout<< "Ms_z" << Ms_z(numMeasurements) << endl;
+
 			// Switch to calculation state when you have saved the desired num of values 
 			numMeasurements++;
 			if (numMeasurements == NUMBER_CALIBRATION_MEASUREMENTS){
@@ -284,31 +290,35 @@ robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
  			//				A --> gravity related matrix
  			//				X --> mass and com vector
  			//				b --> Fs, Ms vector
+ 			robot->rotation(RotFromBase2EE, ee_link_name);
+ 			//cout<< "R " << RotFromBase2EE << endl;
  			g_vec_inBase << 0.0, 0.0, -9.81;
  			g_vec_inSensor = RotFromBase2EE.transpose() * g_vec_inBase;
  			g_vec_inSensor << g_vec_inSensor(0), g_vec_inSensor(1), -g_vec_inSensor(2); //because the force sensor frame is the opposite to that of the EE
+			// cout<< "g " << g_vec_inSensor << endl;
+			// cout<<"g norm " << g_vec_inSensor.norm()<<endl;
 
  			if(posNumber == 0){
 		 			gravityMatrix0 << g_vec_inSensor(0),		0,						0,						0,
 		 							  g_vec_inSensor(1),		0,						0,						0,
 		 							  g_vec_inSensor(2),		0,						0,						0,	
-		 							  0,						0,						-g_vec_inSensor(2),		g_vec_inSensor(1),
-		 							  0,						g_vec_inSensor(2),		0, 						g_vec_inSensor(0),
-		 							  0,						-g_vec_inSensor(1),		-g_vec_inSensor(0),		0;
+		 							  0,						0,						g_vec_inSensor(2),		-g_vec_inSensor(1),
+		 							  0,						-g_vec_inSensor(2),		0, 						g_vec_inSensor(0),
+		 							  0,						g_vec_inSensor(1),		-g_vec_inSensor(0),		0;
  			}else if(posNumber ==1){
  					gravityMatrix1 << g_vec_inSensor(0),		0,						0,						0,
 		 							  g_vec_inSensor(1),		0,						0,						0,
 		 							  g_vec_inSensor(2),		0,						0,						0,	
-		 							  0,						0,						-g_vec_inSensor(2),		g_vec_inSensor(1),
-		 							  0,						g_vec_inSensor(2),		0, 						g_vec_inSensor(0),
-		 							  0,						-g_vec_inSensor(1),		-g_vec_inSensor(0),		0;
+		 							  0,						0,						g_vec_inSensor(2),		-g_vec_inSensor(1),
+		 							  0,						-g_vec_inSensor(2),		0, 						g_vec_inSensor(0),
+		 							  0,						g_vec_inSensor(1),		-g_vec_inSensor(0),		0;
 	 		}else if(posNumber ==2){
 		 			gravityMatrix2 << g_vec_inSensor(0),		0,						0,						0,
 		 							  g_vec_inSensor(1),		0,						0,						0,
 		 							  g_vec_inSensor(2),		0,						0,						0,	
-		 							  0,						0,						-g_vec_inSensor(2),		g_vec_inSensor(1),
-		 							  0,						g_vec_inSensor(2),		0, 						g_vec_inSensor(0),
-		 							  0,						-g_vec_inSensor(1),		-g_vec_inSensor(0),		0;
+		 							  0,						0,						g_vec_inSensor(2),		-g_vec_inSensor(1),
+		 							  0,						-g_vec_inSensor(2),		0, 						g_vec_inSensor(0),
+		 							  0,						g_vec_inSensor(1),		-g_vec_inSensor(0),		0;
 	 		}
  			
  			// (4) If you haven't been to all calibration locations -> update desired configuration and move to next location 
@@ -338,8 +348,8 @@ robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
 				command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
 
 				// Calculate mass and COM 
-				gravityMatrix << gravityMatrix1, gravityMatrix1, gravityMatrix2;
-				average_Fs_Ms << average_Fs_Ms_0,average_Fs_Ms_1,average_Fs_Ms_2;
+				gravityMatrix << gravityMatrix0, gravityMatrix1, gravityMatrix2;
+				average_Fs_Ms << average_Fs_Ms_0, average_Fs_Ms_1, average_Fs_Ms_2;
 	 			
 	 			gravityMatrix_leftInv = ((gravityMatrix.transpose()*gravityMatrix).inverse()) * gravityMatrix.transpose();
 	 			massAndCOM = gravityMatrix_leftInv * average_Fs_Ms; //X = Ainv * b
@@ -350,14 +360,22 @@ robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
 
 				// end of calibration message
  				cout << " DONE CALIBRATING! =) " << endl;	
-				cout << " Calculated mass:  " << mass << endl;	
-				cout << " Calculated mass vector:  " << calculatedMassVector << endl;
-				cout << " Calculated distance from EE to sensor COM:  " << com_pos.norm() << endl;	
+				cout << " mass:  " << mass << endl;	
+				cout << " distance (sensor to object):  " << com_pos.norm() << endl;	
+				cout << " com vector:  " << com_pos << endl;	
+				cout << " solution vector:  " << massAndCOM << endl;	
+
+
+				//Move to next position
+ 				calibrationState =  CALIBRATION_HOLD_POSITION;
+
  			}
 
-		} 
-	 		
-		redis_client.setEigenMatrixDerived(JOINT_TORQUES_COMMANDED_KEY, command_torques);
+		} else if (calibrationState == CALIBRATION_HOLD_POSITION) {	
+				command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
+		}
+
+		redis_client.setEigenMatrix(JOINT_TORQUES_COMMANDED_KEY, command_torques);
 		controller_counter++;
 						
 		// Calculate F and M due to the added object after the sensor (Fw, Mw)
@@ -369,7 +387,7 @@ robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
 	// when you press ctrl+C it will exit the while loop 
 	// and come to these lines which stop the robot
 	command_torques.setZero();
-    redis_client.setEigenMatrixDerived(JOINT_TORQUES_COMMANDED_KEY, command_torques);
+    redis_client.setEigenMatrix(JOINT_TORQUES_COMMANDED_KEY, command_torques);
 
     // show stats when the experiment is over
     double end_time = timer.elapsedTime();
