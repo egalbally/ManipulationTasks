@@ -24,7 +24,7 @@
 #include "optoforce/OptoforceRedisDriver.h"
 
 #include <Eigen/Core>
-#include <thread>
+// #include <thread>
 
 using namespace std;
 
@@ -40,17 +40,35 @@ const std::string EE_FORCE_SENSOR_FORCE_KEY = Optoforce::KEY_6D_SENSOR_FORCE;
 const std::string KP_JOINT_KEY = "sai2::iiwaForceControl::iiwaBot::tasks::kp_joint";
 const std::string KV_JOINT_KEY = "sai2::iiwaForceControl::iiwaBot::tasks::kv_joint";
 
+// link variable names
+const string wrist_link_name = "link5";
+const string ee_link_name = "link6";
+
+// Constants
+const double CAL_POS_TOLERANCE = 0.1;
+const double CAL_VEL_TOLERANCE = 0.001;
+const Eigen::Vector3d g(0, 0, -9.81);
+const int maxNumMeasurements = 100;
+
+
+
 typedef enum {
 	CALIBRATION_MOVING2LOCATION,
 	CALIBRATION_SENSING,
 	CALIBRATION_MASS_CALCULATION,
-	CALIBRATION_HOLD_POSITION,
-	CALIBRATION_HOLD_AND_CALCULATE_BIAS,
-	CALIBRATION_HOLD_AND_WAIT_FOR_KEY
+	CALIBRATION_HOLD_POSITION
 } CalibrationState;
 
 #define RUN_BOT 1
 #define RUN_SIM 0
+
+static Eigen::Matrix3d crossProductMatrix(const Eigen::Vector3d& x) {
+	Eigen::Matrix3d X;
+	X <<     0,  x(2), -x(1),
+	     -x(2),     0,  x(0),
+	      x(1), -x(0),     0;
+ 	return X;
+}
 
 // Change when running in sim or real robot!!!
 bool robotOrSim = RUN_BOT;
@@ -64,19 +82,12 @@ std::string fgc_command_enabled = "";
 void sighandler(int sig) //when you press ctrl+C
 { runloop = false; }
 
-bool char_obtained;
-void nonblocking_getchar() {
-	char c = getchar();
-	char_obtained = true;
-}
-
 // main loop
 int main() {
 	
 	std::cout << "Loading URDF world model file: " << world_file << std::endl;
 
-	ofstream outputtxt;
-	outputtxt.open ("output.txt");
+	ofstream outputtxt("output.txt");
 
 	// start redis client
 	RedisClient redis_client;
@@ -96,7 +107,6 @@ int main() {
 
 	// ----------------------------------- Controller setup 
 	robot->updateModel();
-	int dof = robot->dof();
 
 	// create a loop timer
 	double control_freq = 1000;
@@ -113,75 +123,47 @@ int main() {
 	redis_client.set(KP_JOINT_KEY, to_string(kp_joint));
 	redis_client.set(KV_JOINT_KEY, to_string(kv_joint));
 
-	// initial desired positions and orientations
-	Eigen::Vector3d x_des;
-	x_des << 0, -0.6, 0.50;
-	Eigen::Matrix3d R_des;
-	R_des << 0, -1, 0, -1, 0, 0, 0, 0, -1;
-	Eigen::VectorXd q_des = Eigen::VectorXd::Zero(dof); 
-	q_des << 90, -30, 0, 60, 0, -90, 0;
-	q_des *= M_PI / 180.0;
+	// Transform sensor measurements to EE frame
+	Eigen::Matrix3d R_sensor_to_EE;
+	R_sensor_to_EE << -1/sqrt(2), -1/sqrt(2), 	0,
+		               1/sqrt(2), -1/sqrt(2), 	0,
+		               0, 		   0, 		  	-1;
 
 	// --------------------------------- Calibration variables
 	
-	// link variable names
-	string wrist_link_name = "link5";
-	string ee_link_name = "link6";
 
-	// sensed forces and moments
-	Eigen::VectorXd command_torques = Eigen::VectorXd::Zero(dof);
-	Eigen::VectorXd ee_sensed_force = Eigen::VectorXd::Zero(3);
-	Eigen::VectorXd ee_sensed_moment = Eigen::VectorXd::Zero(3);
-	Eigen::VectorXd ee_sensed_force_inEE = Eigen::VectorXd::Zero(3);
-	Eigen::VectorXd ee_sensed_force_and_moment = Eigen::VectorXd::Zero(6); 
-	
-	const int numCalibrationLocations = 3;
-	bool CalculatingBiasFlag = 1;
+	// command torques
+	Eigen::VectorXd command_torques = Eigen::VectorXd::Zero(KukaIIWA::DOF);
 
 	// initial calibration state
 	CalibrationState calibrationState = CALIBRATION_MOVING2LOCATION;
 
-	double posNumber = 0;
-	double CAL_POS_TOLERANCE = 0.1;
-	double CAL_VEL_TOLERANCE = 0.1;
-	double numMeasurements = 0;
-	const int maxNumMeasurements = 100;
+	int posNumber = 0;
+	int numMeasurements = 0;
 	
 	// desired joint positions and velocities
-	Eigen::VectorXd q_calDes = Eigen::VectorXd::Zero(dof); 
-	q_calDes << 90, -30, 0, 60, 0, -90, 0; 
-	q_calDes *= M_PI / 180.0;
-	Eigen::VectorXd qd_calDes = Eigen::VectorXd::Zero(dof); 
+	std::vector<Eigen::VectorXd> vec_q_des;
+	Eigen::VectorXd q_temp(KukaIIWA::DOF); 
+	q_temp << 90, -30, 0, 60, 0, -90, 0;
+	q_temp *= M_PI / 180.0;
+	vec_q_des.push_back(q_temp);
+	for (int q6 = -45; q6 <= 0; q6 += 45) {
+		for (int q7 = -135; q7 <= 135; q7 += 45) {
+			q_temp << 90, -30, 0, 60, 0, q6, q7;
+			q_temp *= M_PI / 180.0;
+			vec_q_des.push_back(q_temp);
+		}
+	}
+	Eigen::VectorXd dq_des = Eigen::VectorXd::Zero(KukaIIWA::DOF);
+	std::vector<Eigen::Vector3d> vec_Fs;
+	std::vector<Eigen::Vector3d> vec_Ms;
+	std::vector<Eigen::Vector3d> vec_gs;
+	const int numCalibrationLocations = vec_q_des.size();
 
-	Eigen::Vector3d Fs;
-	Eigen::Vector3d Ms;
-	Eigen::Vector3d Fbias;
-	Eigen::Vector3d Mbias;
-	Eigen::VectorXd Fs_x(maxNumMeasurements);   
-	Eigen::VectorXd Fs_y(maxNumMeasurements); 
-	Eigen::VectorXd Fs_z(maxNumMeasurements); 
-	Eigen::VectorXd Ms_x(maxNumMeasurements); 
-	Eigen::VectorXd Ms_y(maxNumMeasurements); 
-	Eigen::VectorXd Ms_z(maxNumMeasurements);
-	Eigen::VectorXd averageMs(3*numCalibrationLocations,1);
-	Eigen::Vector3d Ms_0;
-	Eigen::Vector3d Ms_1;
-	Eigen::Vector3d Ms_2;
-	double Fs_0_mod = 0;
-	double Fs_1_mod = 0;
-	double Fs_2_mod = 0;
-
-	Eigen::Vector3d g_vec_inBase;
-	
-	Eigen::MatrixXd forceMatrix(3*numCalibrationLocations,3);
-	Eigen::Matrix3d forceMatrix0;
-	Eigen::Matrix3d forceMatrix1;
-	Eigen::Matrix3d forceMatrix2;
-	Eigen::MatrixXd forceMatrix_leftInv(3,3*numCalibrationLocations);
-	
-	Eigen::Vector3d com_pos;
-	// ------------------------------------------------------------------
-	std::thread io_thread;
+	// Force sensor readings at a given position
+	Eigen::MatrixXd Fs_i(maxNumMeasurements, 3);
+	Eigen::MatrixXd Ms_i(maxNumMeasurements, 3);
+	Eigen::MatrixXd gs_i(maxNumMeasurements, 3);
 
 	while (runloop) {
 		timer.waitForNextLoop();
@@ -189,33 +171,38 @@ int main() {
 		// read from Redis
 		robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
 		robot->_dq = redis_client.getEigenMatrix(JOINT_VELOCITIES_KEY);
+
+		Eigen::VectorXd ee_sensed_force_and_moment = Eigen::VectorXd::Zero(6); 
 		if(robotOrSim == RUN_BOT)
 			ee_sensed_force_and_moment = redis_client.getEigenMatrix(EE_FORCE_SENSOR_FORCE_KEY); //robot
 		else if(robotOrSim == RUN_SIM)
 			ee_sensed_force_and_moment.setZero(); //sim
 
 		// force and torque measurements from sensor
-		ee_sensed_force = ee_sensed_force_and_moment.head<3>();
-		ee_sensed_moment = ee_sensed_force_and_moment.tail<4>();
+		Eigen::Vector3d ee_sensed_force = R_sensor_to_EE * ee_sensed_force_and_moment.head(3);
+		Eigen::Vector3d ee_sensed_moment = R_sensor_to_EE * ee_sensed_force_and_moment.tail(3);
 
 		// joint angle errors
-		Eigen::VectorXd q_calErr = Eigen::VectorXd::Zero(dof);
-		Eigen::VectorXd qd_calErr = Eigen::VectorXd::Zero(dof);
-		q_calErr = robot->_q - q_calDes;
-		qd_calErr = robot->_dq - qd_calDes;
+		Eigen::VectorXd q_calErr = robot->_q - vec_q_des[posNumber];
+		Eigen::VectorXd qd_calErr = robot->_dq - dq_des;
 					
 		robot->updateModel();
 		double time = controller_counter/control_freq;
+
+		// get gravity
+		Eigen::Matrix3d Rot_EE_to_base;
+		robot->rotation(Rot_EE_to_base, ee_link_name);
+		Eigen::Vector3d g_ee = Rot_EE_to_base.transpose() * g;
 
 		// ----------------  Calibration Routine --------------------------
 
 		if (calibrationState == CALIBRATION_MOVING2LOCATION) {
 			// Joint space controller w/ velocity saturation	
-			qd_calDes = (kp_joint/kv_joint) * -q_calErr;
+			dq_des = (kp_joint/kv_joint) * -q_calErr;
 			double vSat;
 			double vMax = 0.5;
-			if (qd_calDes.norm() != 0) {
-				vSat = vMax/qd_calDes.norm();
+			if (dq_des.norm() != 0) {
+				vSat = vMax/dq_des.norm();
 			} else {
 				vSat = vMax/1e-6;
 			}
@@ -225,10 +212,10 @@ int main() {
 				vSat = -1;
 			}		
 			
-			command_torques = -kv_joint * (robot->_dq - vSat * qd_calDes); 
+			command_torques = -kv_joint * (robot->_dq - vSat * dq_des); 
 
 			// If you have reached a calibration location go to sensing case
-			if(q_calErr.norm() < CAL_POS_TOLERANCE && robot->_dq.norm() < CAL_VEL_TOLERANCE)
+			if(q_calErr.norm() < CAL_POS_TOLERANCE && robot->_dq.norm() < CAL_VEL_TOLERANCE && timer.elapsedTime() > 3.0)
 			{
 				cout<< "pos #" << posNumber << " -location reached"<<endl;
 				calibrationState = CALIBRATION_SENSING;
@@ -239,12 +226,9 @@ int main() {
 			command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
 			
 	 		// (1) Save Fs and Ms values in vectors 
-			Fs_x(numMeasurements) = ee_sensed_force(0);
-			Fs_y(numMeasurements) = ee_sensed_force(1);
-			Fs_z(numMeasurements) = ee_sensed_force(2);
-			Ms_x(numMeasurements) = ee_sensed_moment(0);
-			Ms_y(numMeasurements) = ee_sensed_moment(1);
-			Ms_z(numMeasurements) = ee_sensed_moment(2);
+	 		Fs_i.row(numMeasurements) = ee_sensed_force;
+	 		Ms_i.row(numMeasurements) = ee_sensed_moment;
+	 		gs_i.row(numMeasurements) = g_ee;
 
 			// Switch to calculation state when you have saved the desired num of values 
 			numMeasurements++;
@@ -252,11 +236,7 @@ int main() {
 			if (numMeasurements == maxNumMeasurements){
 				numMeasurements = 0;
 				cout<< "pos #" << posNumber << " -finished measurements"<<endl;	
-				if (CalculatingBiasFlag){
-					calibrationState = CALIBRATION_HOLD_AND_CALCULATE_BIAS;
-				}else{
-					calibrationState = CALIBRATION_MASS_CALCULATION;
-				}	
+				calibrationState = CALIBRATION_MASS_CALCULATION;
 			}
 
 		} else if (calibrationState == CALIBRATION_MASS_CALCULATION) {
@@ -264,54 +244,11 @@ int main() {
 			command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
 
 			// (2) Average values of sensed measurements for this position(this will improve precision)
-			Fs<< Fs_x.sum()/Fs_x.size(),
-				 Fs_y.sum()/Fs_y.size(),
-				 Fs_z.sum()/Fs_z.size();
+			vec_Fs.push_back(Fs_i.colwise().mean());
+			vec_Ms.push_back(Ms_i.colwise().mean());
+			vec_gs.push_back(gs_i.colwise().mean());
 
-			Ms<< Ms_x.sum()/Ms_x.size(),
-				 Ms_y.sum()/Ms_y.size(),
-				 Ms_z.sum()/Ms_z.size();
-			
-			Fs = Fs - Fbias;
-			Ms = Ms - Mbias;
-
-			if(posNumber == 0){
-		 			Ms_0 = Ms;
-		 			Fs_0_mod = Fs.norm();
- 			}else if(posNumber ==1){
- 					Ms_1 = Ms;
-		 			Fs_1_mod = Fs.norm();
-	 		}else if(posNumber ==2){
-		 			Ms_2 = Ms;
-		 			Fs_2_mod = Fs.norm();
-	 		}
-			cout<< "pos #" << posNumber << " Fs, Ms: " << Fs.transpose() << Ms.transpose() <<endl;
-
- 			// (3) Calculate A (forceMatrix) for the current location
- 			//			AX = b where 
- 			//				A --> gravity related matrix
- 			//				X --> mass and com vector
- 			//				b --> Fs, Ms vector
- 			
- 			//robot->rotation(RotFromBase2EE, ee_link_name);
- 			g_vec_inBase << 0.0, 0.0, -9.81;
- 			double g = g_vec_inBase.norm();
- 			//g_vec_inSensor = RotFromBase2EE.transpose() * g_vec_inBase;
- 			//g_vec_inSensor << g_vec_inSensor(0), g_vec_inSensor(1), -g_vec_inSensor(2); //because the force sensor frame is the opposite to that of the EE
-			
- 			if(posNumber == 0){
-		 			forceMatrix0 	<< 0,						Fs(2),					-Fs(1),
-		 							   	-Fs(2),					0, 						Fs(0),
-		 							   	Fs(1),					-Fs(0),					0;
- 			}else if(posNumber ==1){
- 					forceMatrix1 	<< 0,						Fs(2),					-Fs(1),
-		 							   	-Fs(2),					0, 						Fs(0),
-		 							   	Fs(1),					-Fs(0),					0;
-	 		}else if(posNumber ==2){
-		 			forceMatrix2 	<< 0,						Fs(2),					-Fs(1),
-		 							   	-Fs(2),					0, 						Fs(0),
-		 							   	Fs(1),					-Fs(0),					0;
-		 	}
+			cout << "pos #" << posNumber << " Fs, Ms, gs: " << vec_Fs[vec_Fs.size()-1].transpose() << "; " << vec_Ms[vec_Ms.size()-1].transpose() << "; " << vec_gs[vec_gs.size()-1].transpose() << endl;
  			
  			// (4) If you haven't been to all calibration locations -> update desired configuration and move to next location 
  			cout<< "pos #" << posNumber << " -finished calculations"<<endl;
@@ -319,15 +256,6 @@ int main() {
 
  			if (posNumber < numCalibrationLocations )
  			{ 				
- 				//update the desired joint angles (IN RADIANS)
- 				if (posNumber == 1)
- 				 	q_calDes <<  90, -30, 0, 60, -31,-47, 58;
- 				// The last position equals the initial one because that's the configuration the controller assumes it's in
-				else if (posNumber == 2)
- 				  	q_calDes <<  90, -30, 0, 60, 54, -100, -48;
-
- 				q_calDes *= M_PI/180;
- 				
  				//Move to next position
  				calibrationState =  CALIBRATION_MOVING2LOCATION;
  			}
@@ -335,72 +263,56 @@ int main() {
  			// (5) If you've visited all calibration locations -> Calculate values, end calibration, and stop robot
  			else
  			{
+ 				// Calculate mass and Fbias
+ 				Eigen::MatrixXd gI(3*numCalibrationLocations, 4);
+ 				Eigen::VectorXd Fs_stack(3*numCalibrationLocations);
+ 				for (int i = 0; i < numCalibrationLocations; i++) {
+ 					gI.block(3*i,0,3,1) = vec_gs[i];
+ 					gI.block(3*i,1,3,3) = Eigen::Matrix3d::Identity();
+ 					Fs_stack.segment(3*i,3) = vec_Fs[i];
+ 				}
+ 				Eigen::VectorXd m_Fbias = gI.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(Fs_stack);
+ 				double m = m_Fbias(0);
+ 				Eigen::Vector3d Fbias = m_Fbias.tail(3);
+
+ 				// Calculate r and Mbias
+ 				Eigen::MatrixXd mgxI(3*numCalibrationLocations, 6);
+ 				Eigen::VectorXd Ms_stack(3*numCalibrationLocations);
+ 				for (int i = 0; i < numCalibrationLocations; i++) {
+ 					mgxI.block(3*i,0,3,3) = crossProductMatrix(-m*vec_gs[i]);
+ 					mgxI.block(3*i,3,3,3) = Eigen::Matrix3d::Identity();
+ 					Ms_stack.segment(3*i,3) = vec_Ms[i];
+ 				}
+ 				Eigen::VectorXd r_Mbias = mgxI.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(Ms_stack);
+ 				Eigen::Vector3d r = r_Mbias.head(3);
+ 				Eigen::Vector3d Mbias = r_Mbias.tail(3);
  				
  				// Hold position - setting command torques to zero was experimentally not enough
 				command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
 
-				// Calculate mass and COM 
-				forceMatrix << forceMatrix0, forceMatrix1, forceMatrix2;		
-	 			forceMatrix_leftInv = ((forceMatrix.transpose()*forceMatrix).inverse()) * forceMatrix.transpose();
-	 			averageMs << Ms_0, Ms_1, Ms_2;
-
-	 			double mass = (Fs_0_mod + Fs_1_mod + Fs_2_mod)/(3*g);
-	 			com_pos = -forceMatrix_leftInv * averageMs;
-
 				// end of calibration message
  				cout << " DONE CALIBRATING! =) " << endl;	
-				cout << " mass:  " << mass << endl;	
-				cout << " distance (sensor to object):  " << com_pos.norm() << endl;	
-				cout << " com vector:  " << com_pos << endl;	
+				cout << " mass:  " << m << endl;	
+				cout << " distance (sensor to object):  " << r.norm() << endl;	
+				cout << " com vector:  " << r.transpose() << endl;
+				cout << " F_bias: " << Fbias.transpose() << endl;
+				cout << " M_bias: " << Mbias.transpose() << endl;
 
 				//Move to next position
- 				calibrationState =  CALIBRATION_HOLD_POSITION;
+ 				calibrationState = CALIBRATION_HOLD_POSITION;
+ 				cout << "Going to CALIBRATION_HOLD_POSITION" << endl;
 
+ 				// Hold the last position
+ 				posNumber--;
  			}
 
-		} else if (calibrationState == CALIBRATION_HOLD_POSITION) {	
+		} else if (calibrationState == CALIBRATION_HOLD_POSITION) {
+			cout << command_torques.transpose() << endl;
 			command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
-
-		}else if (calibrationState == CALIBRATION_HOLD_AND_CALCULATE_BIAS) {
-			command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
-			cout << "Calculating Bias" <<endl;
-				
-			Fs<< Fs_x.sum()/Fs_x.size(),
-			 	 Fs_y.sum()/Fs_y.size(),
-			 	 Fs_z.sum()/Fs_z.size();
-
-			Ms<< Ms_x.sum()/Ms_x.size(),
-				 Ms_y.sum()/Ms_y.size(),
-				 Ms_z.sum()/Ms_z.size();
-			
-			Fbias = Fs;
-			Mbias = Ms;		
-
-			cout << " Fbias:  " << Fbias << endl;	
-			cout << " Mbias:  " << Mbias << endl;	
-			cout << "PRESS KEY to continue" <<endl;
-
-			CalculatingBiasFlag = 0;
-			calibrationState = CALIBRATION_HOLD_AND_WAIT_FOR_KEY;
-			io_thread = std::thread(nonblocking_getchar);
-
-		}else if (calibrationState == CALIBRATION_HOLD_AND_WAIT_FOR_KEY) {
-			command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
-			
-			if (char_obtained) {
-				io_thread.join();
-				cout << "Key pressed. Start calibrating." <<endl;
-				// getchar();
-				calibrationState = CALIBRATION_MOVING2LOCATION;
-			}
 		}
 
 		redis_client.setEigenMatrix(JOINT_TORQUES_COMMANDED_KEY, command_torques);
 		controller_counter++;
-						
-		// Calculate F and M due to the added object after the sensor (Fw, Mw)
-		// Note - we will substract these values from the sensed values 
-		// 		  to obtain the real force due to contact with the environment
 	
 	}
 
