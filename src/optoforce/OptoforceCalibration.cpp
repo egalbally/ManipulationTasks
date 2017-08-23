@@ -15,36 +15,39 @@
 #include <fstream>
 #include <math.h>
 #include <signal.h>
-#include "chai3d.h"
-#include "ButterworthFilter.h"
-#include "model/ModelInterface.h"
-#include "timer/LoopTimer.h"
+#include <model/ModelInterface.h>
+#include <timer/LoopTimer.h>
 
 // For redis publication
 #include "redis/RedisClient.h"
+#include "kuka_iiwa/KukaIIWA.h"
+#include "optoforce/OptoforceRedisDriver.h"
+
+#include <Eigen/Core>
+#include <thread>
 
 using namespace std;
-using namespace chai3d;
 
-const std::string world_file = "../resources/01-simulated_force_sensor/world.urdf";
-const std::string robot_file = "../../robot_models/kuka_iiwa/01-simulated_force_sensor/kuka_iiwa.urdf";
+const std::string world_file = "resources/kuka_iiwa_driver/world.urdf";
+const std::string robot_file = "resources/kuka_iiwa_driver/kuka_iiwa.urdf";
 const std::string robot_name = "Kuka-IIWA";
 
-// Redis keys  
-const std::string JOINT_TORQUES_COMMANDED_KEY = "sai2::KUKA_IIWA::actuators::fgc";
-const std::string JOINT_ANGLES_KEY  = "sai2::KUKA_IIWA::sensors::q";
-const std::string JOINT_VELOCITIES_KEY = "sai2::KUKA_IIWA::sensors::dq";
-const std::string EE_FORCE_SENSOR_FORCE_KEY = "sai2::optoforceSensor::6Dsensor::force";
-const std::string EE_DESIRED_FORCE_LOGGED_KEY = "sai2::iiwaForceControl::iiwaBot::simulation::data_log::desired_force";
-const std::string EE_SENSED_FORCE_LOGGED_KEY = "sai2::iiwaForceControl::iiwaBot::simulation::data_log::sensed_force";
-const std::string JOINT_TORQUES_SENSED_KEY = "sai2::KUKA_IIWA::sensors::torques";
+// Redis keys
+const std::string JOINT_TORQUES_COMMANDED_KEY = KukaIIWA::KEY_COMMAND_TORQUES;
+const std::string JOINT_ANGLES_KEY  = KukaIIWA::KEY_JOINT_POSITIONS;
+const std::string JOINT_VELOCITIES_KEY = KukaIIWA::KEY_JOINT_VELOCITIES;
+const std::string EE_FORCE_SENSOR_FORCE_KEY = Optoforce::KEY_6D_SENSOR_FORCE;
 const std::string KP_JOINT_KEY = "sai2::iiwaForceControl::iiwaBot::tasks::kp_joint";
 const std::string KV_JOINT_KEY = "sai2::iiwaForceControl::iiwaBot::tasks::kv_joint";
 
-#define CALIBRATION_MOVING2LOCATION 0
-#define CALIBRATION_SENSING 1
-#define CALIBRATION_MASS_CALCULATION 2
-#define CALIBRATION_HOLD_POSITION 3
+typedef enum {
+	CALIBRATION_MOVING2LOCATION,
+	CALIBRATION_SENSING,
+	CALIBRATION_MASS_CALCULATION,
+	CALIBRATION_HOLD_POSITION,
+	CALIBRATION_HOLD_AND_CALCULATE_BIAS,
+	CALIBRATION_HOLD_AND_WAIT_FOR_KEY
+} CalibrationState;
 
 #define RUN_BOT 1
 #define RUN_SIM 0
@@ -60,6 +63,12 @@ std::string fgc_command_enabled = "";
 
 void sighandler(int sig) //when you press ctrl+C
 { runloop = false; }
+
+bool char_obtained;
+void nonblocking_getchar() {
+	char c = getchar();
+	char_obtained = true;
+}
 
 // main loop
 int main() {
@@ -79,11 +88,7 @@ int main() {
 	signal(SIGINT, &sighandler);
 
 	// load robot TODO: FIND A WAY TO MAKE THIS NOT STUPID :D
-	Model::ModelInterface *robot; 
-	if(robotOrSim == RUN_BOT)
-		robot = new Model::ModelInterface(robot_file, Model::rbdl_kuka, Model::urdf, false); // robot
-	if(robotOrSim == RUN_SIM)
-		robot = new Model::ModelInterface(robot_file, Model::rbdl, Model::urdf, false); //sim
+	auto robot = new Model::ModelInterface(robot_file, Model::rbdl, Model::urdf, false); //sim
 
 	// read from Redis
 	robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
@@ -107,11 +112,6 @@ int main() {
 	// redis buffer
 	redis_client.set(KP_JOINT_KEY, to_string(kp_joint));
 	redis_client.set(KV_JOINT_KEY, to_string(kv_joint));
-
-	//setup lowpass filter
-	sai::ButterworthFilter filter;
-	filter.setDimension(3);
-	filter.setCutoffFrequency(0.05);
 
 	// initial desired positions and orientations
 	Eigen::Vector3d x_des;
@@ -139,7 +139,7 @@ int main() {
 	bool CalculatingBiasFlag = 1;
 
 	// initial calibration state
-	int calibrationState = CALIBRATION_MOVING2LOCATION;
+	CalibrationState calibrationState = CALIBRATION_MOVING2LOCATION;
 
 	double posNumber = 0;
 	double CAL_POS_TOLERANCE = 0.1;
@@ -181,7 +181,8 @@ int main() {
 	
 	Eigen::Vector3d com_pos;
 	// ------------------------------------------------------------------
-	
+	std::thread io_thread;
+
 	while (runloop) {
 		timer.waitForNextLoop();
 
@@ -250,11 +251,11 @@ int main() {
 
 			if (numMeasurements == maxNumMeasurements){
 				numMeasurements = 0;
+				cout<< "pos #" << posNumber << " -finished measurements"<<endl;	
 				if (CalculatingBiasFlag){
-					calibrationState = CALIBRATION_HOLD_POSITION;
+					calibrationState = CALIBRATION_HOLD_AND_CALCULATE_BIAS;
 				}else{
 					calibrationState = CALIBRATION_MASS_CALCULATION;
-					cout<< "pos #" << posNumber << " -finished measurements"<<endl;	
 				}	
 			}
 
@@ -320,10 +321,10 @@ int main() {
  			{ 				
  				//update the desired joint angles (IN RADIANS)
  				if (posNumber == 1)
- 					q_calDes << 155,-34,81,50,-49,-83,46;
+ 				 	q_calDes <<  90, -30, 0, 60, -31,-47, 58;
  				// The last position equals the initial one because that's the configuration the controller assumes it's in
 				else if (posNumber == 2)
- 				 	q_calDes << 141,31,48,93,23,-90,40;
+ 				  	q_calDes <<  90, -30, 0, 60, 54, -100, -48;
 
  				q_calDes *= M_PI/180;
  				
@@ -358,27 +359,40 @@ int main() {
  			}
 
 		} else if (calibrationState == CALIBRATION_HOLD_POSITION) {	
-				command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
+			command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
 
-				if(CalculatingBiasFlag)
-				{
-					Fs<< Fs_x.sum()/Fs_x.size(),
-					 	Fs_y.sum()/Fs_y.size(),
-					 	Fs_z.sum()/Fs_z.size();
+		}else if (calibrationState == CALIBRATION_HOLD_AND_CALCULATE_BIAS) {
+			command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
+			cout << "Calculating Bias" <<endl;
+				
+			Fs<< Fs_x.sum()/Fs_x.size(),
+			 	 Fs_y.sum()/Fs_y.size(),
+			 	 Fs_z.sum()/Fs_z.size();
 
-					Ms<< Ms_x.sum()/Ms_x.size(),
-						Ms_y.sum()/Ms_y.size(),
-						Ms_z.sum()/Ms_z.size();
-					
-					Fbias = Fs;
-					Mbias = Ms;
-					CalculatingBiasFlag = 0;
+			Ms<< Ms_x.sum()/Ms_x.size(),
+				 Ms_y.sum()/Ms_y.size(),
+				 Ms_z.sum()/Ms_z.size();
+			
+			Fbias = Fs;
+			Mbias = Ms;		
 
-					if(cin.rdbuf()->in_avail()){ //this tells us if a key has been pressed
-						getchar();
-						calibrationState = CALIBRATION_MOVING2LOCATION;
-					}
-				}
+			cout << " Fbias:  " << Fbias << endl;	
+			cout << " Mbias:  " << Mbias << endl;	
+			cout << "PRESS KEY to continue" <<endl;
+
+			CalculatingBiasFlag = 0;
+			calibrationState = CALIBRATION_HOLD_AND_WAIT_FOR_KEY;
+			io_thread = std::thread(nonblocking_getchar);
+
+		}else if (calibrationState == CALIBRATION_HOLD_AND_WAIT_FOR_KEY) {
+			command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
+			
+			if (char_obtained) {
+				io_thread.join();
+				cout << "Key pressed. Start calibrating." <<endl;
+				// getchar();
+				calibrationState = CALIBRATION_MOVING2LOCATION;
+			}
 		}
 
 		redis_client.setEigenMatrix(JOINT_TORQUES_COMMANDED_KEY, command_torques);
