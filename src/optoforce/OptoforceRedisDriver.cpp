@@ -253,8 +253,8 @@ void processRaw6DSensorData(const OptoPackage6D& optoPackage, Eigen::VectorXd& d
 		double Ty_coeff = 1.0/1043.05;
 		double Tz_coeff = 1.0/1536.09;
 
-		data(0) = -optoPackage.Fx * Fx_coeff;
-		data(1) = -optoPackage.Fy * Fy_coeff;
+		data(0) = optoPackage.Fx * Fx_coeff;
+		data(1) = optoPackage.Fy * Fy_coeff;
 		if(optoPackage.Fz < 0) // compression
 		{
 			data(2) = optoPackage.Fz * Fz_compression_coeff;
@@ -263,8 +263,8 @@ void processRaw6DSensorData(const OptoPackage6D& optoPackage, Eigen::VectorXd& d
 		{
 			data(2) = optoPackage.Fz * Fz_tension_coeff;
 		}
-		data(3) = -optoPackage.Tx * Tx_coeff;
-		data(4) = -optoPackage.Ty * Ty_coeff;
+		data(3) = optoPackage.Tx * Tx_coeff;
+		data(4) = optoPackage.Ty * Ty_coeff;
 		data(5) = optoPackage.Tz * Tz_coeff;
 
     }
