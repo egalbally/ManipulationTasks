@@ -1,7 +1,6 @@
 #include "DemoProject.h"
 
 #include <iostream>
-#include <fstream>
 
 #include <signal.h>
 static volatile bool g_runloop = true;
@@ -91,6 +90,30 @@ void DemoProject::writeRedisValues() {
 }
 
 /**
+ * DemoProject::estimatePivotPoint()
+ * ----------------------------------------------------
+ * Estimate pivot point from the linear and angular velocity.
+ */
+Eigen::Vector3d DemoProject::estimatePivotPoint() {
+	/*
+ 	 * Assuming the end effector is rotating about a point, we know:
+ 	 *
+ 	 *   v = -w x r = r x w
+ 	 *
+ 	 * Where r is the vector from the end effector to the pivot point.
+ 	 * The orthogonal projection of r on w is:
+ 	 *
+ 	 *   r_orth = w x (r x w) = w x v
+ 	 *
+ 	 * We can determine the pivot point up to a line parallel to w:
+ 	 *
+ 	 *   x_pivot = x_ee + r_orth = x_ee + (w x v)
+ 	 */
+	Eigen::Vector3d x_pivot = x_ + w_.cross(dx_);
+	return Eigen::Vector3d(op_point_filter_.update(x_pivot));
+}
+
+/**
  * DemoProject::updateModel()
  * --------------------------
  * Update the robot model and all the relevant member variables.
@@ -107,17 +130,23 @@ void DemoProject::updateModel() {
 	theta = acos(abs(F_sensor_.dot(Eigen::Vector3d(0,0,1))) / F_sensor_.norm());
 
 	// Jacobians
-	robot->J_0(J_, "link6", Eigen::Vector3d(0,0,0.11));
+	robot->J_0(J_cap_, "link6", Eigen::Vector3d(0,0,0.11));
 	robot->Jv(Jv_, "link6", Eigen::Vector3d::Zero());
+	robot->Jw(Jw_, "link6");
+
+	op_point_ = estimatePivotPoint();
 	robot->Jv(Jv_cap_, "link6", Eigen::Vector3d(0,0,0.11));
-	robot->nullspaceMatrix(N_, J_);
+	robot->nullspaceMatrix(N_cap_, J_cap_);
 	robot->nullspaceMatrix(Nv_, Jv_);
 	robot->nullspaceMatrix(Nv_cap_, Jv_cap_);
+	Jw_cap_ = Jw_ * Nv_cap_;
+	robot->nullspaceMatrix(Nvw_cap_, Jw_cap_, Nv_cap_);
 
 	// Dynamics
+	robot->taskInertiaMatrixWithPseudoInv(Lambda_cap_, J_cap_);
 	robot->taskInertiaMatrixWithPseudoInv(Lambda_x_, Jv_);
 	robot->taskInertiaMatrixWithPseudoInv(Lambda_x_cap_, Jv_cap_);
-	robot->taskInertiaMatrixWithPseudoInv(Lambda_, J_);
+	robot->taskInertiaMatrixWithPseudoInv(Lambda_r_cap_, Jw_cap_);
 	robot->gravityVector(g_);
 }
 
@@ -218,8 +247,8 @@ DemoProject::ControllerStatus DemoProject::alignBottleCap() {
 	Eigen::VectorXd F_joint = robot->_M * ddq; 
 
 	// Control torques
-	Eigen::VectorXd F_xw = Lambda_ * ddxdw;
-	command_torques_ = J_.transpose() * F_xw + N_.transpose() * F_joint;
+	Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
+	command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
 
 	// Finish if sensed moments and angular velocity are zero
 	if ((M_sensor_.norm() <= 0.1) && (w_.norm() < 0.01) && (F_sensor_(2) < -1.0)) return FINISHED;
@@ -264,8 +293,47 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapExponentialDamping() {
 	Eigen::VectorXd F_joint = robot->_M * ddq; 
 
 	// Control torques
-	Eigen::VectorXd F_xw = Lambda_ * ddxdw;
-	command_torques_ = J_.transpose() * F_xw + N_.transpose() * F_joint;
+	Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
+	command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
+
+	// Finish if sensed moments and angular velocity are zero
+	if ((M_sensor_.norm() <= 0.1) && (w_.norm() < 0.01) && (F_sensor_(2) < -1.0)) return FINISHED;
+
+	return RUNNING;
+}
+
+/**
+ * DemoProject::alignBottleCapSimple()
+ * ----------------------------------------------------
+ * Controller to move end effector to desired position.
+ */
+DemoProject::ControllerStatus DemoProject::alignBottleCapSimple() {
+	// Position - set xdes below the current position in z to apply a constant downward force
+	Eigen::Vector3d x_des_ee(0,0,0.025);
+	robot->position(x_des_, "link6", x_des_ee);
+	Eigen::Vector3d x_err = x_ - x_des_;
+	Eigen::Vector3d dx_err = dx_ - dx_des_;
+	Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
+
+	// Orientation
+	Eigen::Vector3d dPhi;
+	dPhi = -R_ee_to_base_ * M_sensor_;
+	Eigen::Vector3d dw = -kp_ori_ * dPhi - kv_ori_ * w_;
+
+	// Nullspace damping	
+	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
+	Eigen::VectorXd F_joint = robot->_M * ddq; 
+
+	// Position-orientation combined
+	// Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
+	// Eigen::VectorXd ddxdw(6);
+	// ddxdw << ddx, dw;
+	// command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
+
+	// Orientation in nullspace of position
+	Eigen::Vector3d F_x = Lambda_x_cap_ * ddx;
+	Eigen::Vector3d F_r = Lambda_r_cap_ * dw;
+	command_torques_ = Jv_cap_.transpose() * F_x + Nv_cap_.transpose() * F_r + Nvw_cap_.transpose() * F_joint;
 
 	// Finish if sensed moments and angular velocity are zero
 	if ((M_sensor_.norm() <= 0.1) && (w_.norm() < 0.01) && (F_sensor_(2) < -1.0)) return FINISHED;

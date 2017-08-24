@@ -6,6 +6,7 @@
 #include "timer/LoopTimer.h"
 #include "kuka_iiwa/KukaIIWA.h"
 #include "optoforce/Optoforce.h"
+#include "filters/ButterworthFilter.h"
 
 // Standard
 #include <string>
@@ -52,15 +53,19 @@ public:
 	    KEY_LESS_DAMPING(kRedisKeyPrefix + robot_name + "::tasks::less_damping"),
 
 		command_torques_(dof),
-		J_(6, dof),
+		J_cap_(6, dof),
 		Jv_(3, dof),
+		Jw_(3, dof),
 		Jv_cap_(3, dof),
-		N_(dof, dof),
+		Jw_cap_(3, dof),
+		N_cap_(dof, dof),
 		Nv_(dof, dof),
 		Nv_cap_(dof, dof),
+		Nvw_cap_(dof, dof),
+		Lambda_cap_(6, 6),
 		Lambda_x_(3, 3),
 		Lambda_x_cap_(3, 3),
-		Lambda_(6, 6),
+		Lambda_r_cap_(3, 3),
 		g_(dof),
 		q_des_(dof),
 		dq_des_(dof),
@@ -81,6 +86,10 @@ public:
 		for (auto& dPhi : vec_dPhi_) {
 			dPhi.setZero();
 		}
+
+		// Initialize pivot point filter
+		op_point_filter_.setDimension(3);
+		op_point_filter_.setCutoffFrequency(0.5);
 	}
 
 	/***** Public functions *****/
@@ -164,9 +173,11 @@ protected:
 	ControllerStatus computeOperationalSpaceControlTorques();
 	ControllerStatus alignBottleCap();
 	ControllerStatus alignBottleCapExponentialDamping();
+	ControllerStatus alignBottleCapSimple();
 	ControllerStatus checkAlignment();
 	ControllerStatus screwBottleCap();
 	ControllerStatus rewindBottleCap();
+	Eigen::Vector3d estimatePivotPoint();
 
 	/***** Member variables *****/
 
@@ -186,9 +197,9 @@ protected:
 
 	// Controller variables
 	Eigen::VectorXd command_torques_;
-	Eigen::MatrixXd Jv_, J_, Jv_cap_;
-	Eigen::MatrixXd N_, Nv_, Nv_cap_;
-	Eigen::MatrixXd Lambda_x_, Lambda_, Lambda_x_cap_;
+	Eigen::MatrixXd J_cap_, Jv_, Jw_, Jv_cap_, Jw_cap_;
+	Eigen::MatrixXd N_cap_, Nv_, Nv_cap_, Nvw_cap_;
+	Eigen::MatrixXd Lambda_cap_, Lambda_x_, Lambda_x_cap_, Lambda_r_cap_;
 	Eigen::VectorXd g_;
 	Eigen::Vector3d x_, dx_, w_;
 	Eigen::VectorXd q_des_, dq_des_;
@@ -201,6 +212,8 @@ protected:
 	Eigen::Vector3d integral_dPhi_ = Eigen::Vector3d::Zero();
 	double t_alignment_;
 	const double kAlignmentWait = 1;
+	ButterworthFilter op_point_filter_;
+	Eigen::Vector3d op_point_;
 
 	// Default gains (used only when keys are nonexistent in Redis)
 	double kp_pos_ = 30;
