@@ -308,8 +308,9 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapExponentialDamping() {
  * Controller to move end effector to desired position.
  */
 DemoProject::ControllerStatus DemoProject::alignBottleCapSimple() {
-	// Position - set xdes below the current position in z to apply a constant downward force
-	Eigen::Vector3d x_des_ee(0,0,0.025);
+	// Position - set xdes in the opposite direction to the contact force to apply a constant F in that direction
+	Eigen::Vector3d x_des_ee;
+	x_des_ee = - (F_sensor_ / F_sensor_.norm());
 	robot->position(x_des_, "link6", x_des_ee);
 	Eigen::Vector3d x_err = x_ - x_des_;
 	Eigen::Vector3d dx_err = dx_ - dx_des_;
@@ -496,15 +497,15 @@ void DemoProject::runLoop() {
 			// Initialize robot to default joint configuration - joint space
 			case JOINT_SPACE_INITIALIZATION:
 				if (computeJointSpaceControlTorques() == FINISHED) {
-					cout << "Joint position initialized. Switching to align bottle cap." << endl;
+					cout << "INIT- Joint position initialized. Switching to align bottle cap." << endl;
 					controller_state_ = DemoProject::ALIGN_BOTTLE_CAP;
 				}
 				break;
 			
 			// Screw cap
 			case ALIGN_BOTTLE_CAP:
-				if (alignBottleCapExponentialDamping() == FINISHED) {  //alignBottleCap
-					cout << "Bottle cap aligned. Switching to check alignment." << endl;
+				if (alignBottleCapSimple() == FINISHED) {  //alignBottleCapExponentialDamping //alignBottleCap //alignBottleCapSimple
+					cout << "ALIGN- Bottle cap aligned. Switching to check alignment." << endl;
 					controller_state_ = CHECK_ALIGNMENT;
 					t_alignment_ = timer_.elapsedTime();
 				}
@@ -513,11 +514,11 @@ void DemoProject::runLoop() {
 			case CHECK_ALIGNMENT:
 				switch (checkAlignment()) {
 					case FINISHED:
-						cout << "Bottle cap aligned. Switching to rewind cap." << endl;
+						cout << "CHECK- Bottle cap aligned. Switching to rewind cap." << endl;
 						controller_state_ = ALIGN_BOTTLE_CAP; //REWIND_BOTTLE_CAP
 						break;
 					case FAILED:
-						cout << "Bottle cap not aligned. Switching back to align bottle cap." << endl;
+						cout << "CHECK- Bottle cap not aligned. Switching back to align bottle cap." << endl;
 						controller_state_ = ALIGN_BOTTLE_CAP;
 						break;
 					default:
@@ -527,7 +528,7 @@ void DemoProject::runLoop() {
 			
 			case REWIND_BOTTLE_CAP:
 				if (rewindBottleCap() == FINISHED) {
-					cout << "Bottle cap rewound. Switching to screw bottle cap." << endl;
+					cout << "REWIND- Bottle cap rewound. Switching to screw bottle cap." << endl;
 					controller_state_ = SCREW_BOTTLE_CAP;
 				}
 				break;
