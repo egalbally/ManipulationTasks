@@ -57,7 +57,7 @@ void DemoProject::readRedisValues() {
 	// Transform sensor measurements to EE frame
 	R_sensor_to_ee_ << -1/sqrt(2), -1/sqrt(2), 	0,
 	                   1/sqrt(2),  -1/sqrt(2), 	0,
-	                   0, 		   0, 		  	-1;
+	                   0, 		   0, 		  	1;
 
 	F_sensor_ = R_sensor_to_ee_ * F_sensor_6d.head(3);
 	M_sensor_ = R_sensor_to_ee_ * F_sensor_6d.tail(3);

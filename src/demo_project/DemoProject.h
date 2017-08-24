@@ -5,7 +5,7 @@
 #include "redis/RedisClient.h"
 #include "timer/LoopTimer.h"
 #include "kuka_iiwa/KukaIIWA.h"
-#include "optoforce/OptoforceRedisDriver.h"
+#include "optoforce/Optoforce.h"
 
 // Standard
 #include <string>

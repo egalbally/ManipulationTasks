@@ -21,7 +21,7 @@
 // For redis publication
 #include "redis/RedisClient.h"
 #include "kuka_iiwa/KukaIIWA.h"
-#include "optoforce/OptoforceRedisDriver.h"
+#include "optoforce/Optoforce.h"
 
 #include <Eigen/Core>
 // #include <thread>
@@ -33,10 +33,6 @@ const std::string robot_file = "resources/kuka_iiwa_driver/kuka_iiwa.urdf";
 const std::string robot_name = "Kuka-IIWA";
 
 // Redis keys
-const std::string JOINT_TORQUES_COMMANDED_KEY = KukaIIWA::KEY_COMMAND_TORQUES;
-const std::string JOINT_ANGLES_KEY  = KukaIIWA::KEY_JOINT_POSITIONS;
-const std::string JOINT_VELOCITIES_KEY = KukaIIWA::KEY_JOINT_VELOCITIES;
-const std::string EE_FORCE_SENSOR_FORCE_KEY = Optoforce::KEY_6D_SENSOR_FORCE;
 const std::string KP_JOINT_KEY = "sai2::iiwaForceControl::iiwaBot::tasks::kp_joint";
 const std::string KV_JOINT_KEY = "sai2::iiwaForceControl::iiwaBot::tasks::kv_joint";
 
@@ -46,11 +42,11 @@ const string ee_link_name = "link6";
 
 // Constants
 const double CAL_POS_TOLERANCE = 0.1;
-const double CAL_VEL_TOLERANCE = 0.001;
+const double CAL_VEL_TOLERANCE = 0.005;
 const Eigen::Vector3d g(0, 0, -9.81);
-const int maxNumMeasurements = 100;
-
-
+const int maxNumMeasurements = 500;
+const double vMax = 1.0;
+const double control_freq = 1000;
 
 typedef enum {
 	CALIBRATION_MOVING2LOCATION,
@@ -102,14 +98,13 @@ int main() {
 	auto robot = new Model::ModelInterface(robot_file, Model::rbdl, Model::urdf, false); //sim
 
 	// read from Redis
-	robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
-	robot->_dq = redis_client.getEigenMatrix(JOINT_VELOCITIES_KEY);
+	robot->_q = redis_client.getEigenMatrix(KukaIIWA::KEY_JOINT_POSITIONS);
+	robot->_dq = redis_client.getEigenMatrix(KukaIIWA::KEY_JOINT_VELOCITIES);
 
 	// ----------------------------------- Controller setup 
 	robot->updateModel();
 
 	// create a loop timer
-	double control_freq = 1000;
 	LoopTimer timer;
 	timer.setLoopFrequency(control_freq);  // 1 KHz
 	timer.setCtrlCHandler(stop);    // exit while loop on ctrl-c
@@ -127,7 +122,7 @@ int main() {
 	Eigen::Matrix3d R_sensor_to_EE;
 	R_sensor_to_EE << -1/sqrt(2), -1/sqrt(2), 	0,
 		               1/sqrt(2), -1/sqrt(2), 	0,
-		               0, 		   0, 		  	-1;
+		               0, 		   0, 		  	1;
 
 	// --------------------------------- Calibration variables
 	
@@ -161,26 +156,30 @@ int main() {
 	const int numCalibrationLocations = vec_q_des.size();
 
 	// Force sensor readings at a given position
-	Eigen::MatrixXd Fs_i(maxNumMeasurements, 3);
-	Eigen::MatrixXd Ms_i(maxNumMeasurements, 3);
-	Eigen::MatrixXd gs_i(maxNumMeasurements, 3);
+	Eigen::Vector3d Fs_i, Ms_i, gs_i;
 
 	while (runloop) {
 		timer.waitForNextLoop();
 
 		// read from Redis
-		robot->_q = redis_client.getEigenMatrix(JOINT_ANGLES_KEY);
-		robot->_dq = redis_client.getEigenMatrix(JOINT_VELOCITIES_KEY);
+		robot->_q = redis_client.getEigenMatrix(KukaIIWA::KEY_JOINT_POSITIONS);
+		robot->_dq = redis_client.getEigenMatrix(KukaIIWA::KEY_JOINT_VELOCITIES);
 
 		Eigen::VectorXd ee_sensed_force_and_moment = Eigen::VectorXd::Zero(6); 
 		if(robotOrSim == RUN_BOT)
-			ee_sensed_force_and_moment = redis_client.getEigenMatrix(EE_FORCE_SENSOR_FORCE_KEY); //robot
+			ee_sensed_force_and_moment = redis_client.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE); //robot
 		else if(robotOrSim == RUN_SIM)
 			ee_sensed_force_and_moment.setZero(); //sim
 
 		// force and torque measurements from sensor
 		Eigen::Vector3d ee_sensed_force = R_sensor_to_EE * ee_sensed_force_and_moment.head(3);
 		Eigen::Vector3d ee_sensed_moment = R_sensor_to_EE * ee_sensed_force_and_moment.tail(3);
+
+		{
+			Eigen::VectorXd sensor_force_temp(6);
+			sensor_force_temp << ee_sensed_force, ee_sensed_moment;
+			redis_client.setEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE + "_controller", sensor_force_temp);
+		}
 
 		// joint angle errors
 		Eigen::VectorXd q_calErr = robot->_q - vec_q_des[posNumber];
@@ -199,18 +198,13 @@ int main() {
 		if (calibrationState == CALIBRATION_MOVING2LOCATION) {
 			// Joint space controller w/ velocity saturation	
 			dq_des = (kp_joint/kv_joint) * -q_calErr;
-			double vSat;
-			double vMax = 0.5;
+			double vSat = 1;
 			if (dq_des.norm() != 0) {
 				vSat = vMax/dq_des.norm();
-			} else {
-				vSat = vMax/1e-6;
 			}
 			if (vSat > 1) {
 				vSat = 1;
-			} else if (vSat < -1) {
-				vSat = -1;
-			}		
+			}	
 			
 			command_torques = -kv_joint * (robot->_dq - vSat * dq_des); 
 
@@ -225,10 +219,10 @@ int main() {
 			// Hold position - setting command torques to zero was experimentally not enough
 			command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
 			
-	 		// (1) Save Fs and Ms values in vectors 
-	 		Fs_i.row(numMeasurements) = ee_sensed_force;
-	 		Ms_i.row(numMeasurements) = ee_sensed_moment;
-	 		gs_i.row(numMeasurements) = g_ee;
+	 		// (1) Save Fs and Ms values in vectors
+	 		Fs_i += ee_sensed_force;
+	 		Ms_i += ee_sensed_moment;
+	 		gs_i += g_ee;
 
 			// Switch to calculation state when you have saved the desired num of values 
 			numMeasurements++;
@@ -244,9 +238,9 @@ int main() {
 			command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
 
 			// (2) Average values of sensed measurements for this position(this will improve precision)
-			vec_Fs.push_back(Fs_i.colwise().mean());
-			vec_Ms.push_back(Ms_i.colwise().mean());
-			vec_gs.push_back(gs_i.colwise().mean());
+			vec_Fs.push_back(Fs_i / maxNumMeasurements);
+			vec_Ms.push_back(Ms_i / maxNumMeasurements);
+			vec_gs.push_back(gs_i / maxNumMeasurements);
 
 			cout << "pos #" << posNumber << " Fs, Ms, gs: " << vec_Fs[vec_Fs.size()-1].transpose() << "; " << vec_Ms[vec_Ms.size()-1].transpose() << "; " << vec_gs[vec_gs.size()-1].transpose() << endl;
  			
@@ -297,21 +291,30 @@ int main() {
 				cout << " com vector:  " << r.transpose() << endl;
 				cout << " F_bias: " << Fbias.transpose() << endl;
 				cout << " M_bias: " << Mbias.transpose() << endl;
+				cout << " ||Fs - [g I] * [m; Fb]||: " << (Fs_stack - gI * m_Fbias).norm() << endl;
+				cout << " ||Ms - [-mgx I] * [r; Mb]||: " << (Ms_stack - mgxI * r_Mbias).norm() << endl;
+				cout << " Fs - [g I] * [m; Fb]: " << (Fs_stack - gI * m_Fbias).transpose() << endl;
+				cout << " Ms - [-mgx I] * [r; Mb]: " << (Ms_stack - mgxI * r_Mbias).transpose() << endl;
+
+				// Publish values to Redis
+				Eigen::VectorXd FM_bias(6);
+				FM_bias << Fbias, Mbias;
+				redis_client.setEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE_BIAS, FM_bias);
+				redis_client.set(Optoforce::KEY_6D_SENSOR_MASS, std::to_string(m));
+				redis_client.setEigenMatrix(Optoforce::KEY_6D_SENSOR_COM, r);
 
 				//Move to next position
  				calibrationState = CALIBRATION_HOLD_POSITION;
- 				cout << "Going to CALIBRATION_HOLD_POSITION" << endl;
 
  				// Hold the last position
  				posNumber--;
  			}
 
 		} else if (calibrationState == CALIBRATION_HOLD_POSITION) {
-			cout << command_torques.transpose() << endl;
 			command_torques = robot->_M * (-kp_joint * q_calErr - kv_joint * robot->_dq); 
 		}
 
-		redis_client.setEigenMatrix(JOINT_TORQUES_COMMANDED_KEY, command_torques);
+		redis_client.setEigenMatrix(KukaIIWA::KEY_COMMAND_TORQUES, command_torques);
 		controller_counter++;
 	
 	}
@@ -319,7 +322,7 @@ int main() {
 	// when you press ctrl+C it will exit the while loop 
 	// and come to these lines which stop the robot
 	command_torques.setZero();
-    redis_client.setEigenMatrix(JOINT_TORQUES_COMMANDED_KEY, command_torques);
+    redis_client.setEigenMatrix(KukaIIWA::KEY_COMMAND_TORQUES, command_torques);
 
     // show stats when the experiment is over
     double end_time = timer.elapsedTime();

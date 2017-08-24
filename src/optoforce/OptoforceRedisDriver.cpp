@@ -3,7 +3,7 @@
  * it will create a connection, read the data, transfer the data from count value to real units
  * and publish it in redis with a key named "sai2::optoforceSensor::6Dsensor::force"
  */
-#include "OptoforceRedisDriver.h"
+#include "Optoforce.h"
 
 #include <iostream>
 #include <fstream>
@@ -257,15 +257,15 @@ void processRaw6DSensorData(const OptoPackage6D& optoPackage, Eigen::VectorXd& d
 		data(1) = -optoPackage.Fy * Fy_coeff;
 		if(optoPackage.Fz < 0) // compression
 		{
-			data(2) = -optoPackage.Fz * Fz_compression_coeff;
+			data(2) = optoPackage.Fz * Fz_compression_coeff;
 		}
 		else
 		{
-			data(2) = -optoPackage.Fz * Fz_tension_coeff;
+			data(2) = optoPackage.Fz * Fz_tension_coeff;
 		}
 		data(3) = -optoPackage.Tx * Tx_coeff;
 		data(4) = -optoPackage.Ty * Ty_coeff;
-		data(5) = -optoPackage.Tz * Tz_coeff;
+		data(5) = optoPackage.Tz * Tz_coeff;
 
     }
 

@@ -3,6 +3,7 @@
 <tool name="calibration_compensation">
 	<inertial>
 		<origin xyz="0.0 0.0 0.02" />
-		<mass value="0.33" />
+		<!-- <mass value="0.33" /> -->
+		<mass value="0.6" />
 	</inertial>
 </tool>
