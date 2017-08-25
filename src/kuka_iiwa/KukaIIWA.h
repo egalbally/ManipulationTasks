@@ -44,7 +44,8 @@ Eigen::VectorXd VectorXd(double x0, double x1, double x2, double x3, double x4, 
 }
 
 // Default Kuka home position
-const Eigen::VectorXd HOME_POSITION  = VectorXd(90, -30, 0, 60, 0, -90, 0) * M_PI/180.0;
+const Eigen::VectorXd HOME_POSITION    = VectorXd(90, -30, 0, 60, 0, -90, 0) * M_PI/180.0;
+const Eigen::Vector3d HOME_POSITION_EE = Eigen::Vector3d(0, -0.6, 0.6);
 
 // Safety limits
 // TODO: Find real velocity and jerk limits

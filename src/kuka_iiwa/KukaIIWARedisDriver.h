@@ -45,6 +45,8 @@ Author: Toki Migimatsu <takatoki@stanford.edu>
 namespace KUKA {
 namespace FRI {
 
+const std::string KEY_TORQUE_OFFSET = KukaIIWA::KEY_PREFIX + "driver::torque_offset";
+
 /**
  * \brief Client for Kuka LBR IIWA that reads and writes to shared memory.
  */
@@ -86,7 +88,7 @@ protected:
 	const double kCutoffFreq = 0.1;
 
 	// Torque offsets
-	const Eigen::VectorXd kTorqueOffset = KukaIIWA::VectorXd(-0.5, 1.0, 0.0, -0.7, 0.0, 0.05, 0.0);
+	Eigen::VectorXd torque_offset_ = KukaIIWA::VectorXd(-0.5, 1.0, 0.0, -0.7, 0.0, 0.05, 0.0);
 
 #ifdef USE_KUKA_LBR_DYNAMICS
 	// Constant end effector properties (without tool.xml)

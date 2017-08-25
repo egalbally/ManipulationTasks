@@ -194,6 +194,7 @@ KukaIIWARedisDriver::KukaIIWARedisDriver(const std::string& redis_ip, const int 
 			      << ". Controllers must be run AFTER the driver has initialized." << std::endl;
 		exit(1);
 	}
+	redis_.setEigenMatrix(KEY_TORQUE_OFFSET, torque_offset_);
 
 	// Initialize tool parameters from tool.xml
 	redis_.set(KukaIIWA::KEY_TOOL_MASS, std::to_string(tool_mass_));
@@ -339,7 +340,8 @@ void KukaIIWARedisDriver::command()
 
 	// Compensate for torque offsets
 	if (fri_command_mode_ == KUKA::FRI::TORQUE) {
-		command_torques_ += kTorqueOffset;
+		torque_offset_ = redis_.getEigenMatrix(KEY_TORQUE_OFFSET);
+		command_torques_ += torque_offset_;
 	}
 
 	// Check command

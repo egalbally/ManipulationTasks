@@ -80,7 +80,7 @@ public:
 		dq_des_.setZero();
 
 		// Desired end effector position
-		x_des_ << -0.1, 0.4, 0.7;
+		x_des_ = KukaIIWA::HOME_POSITION_EE - Eigen::Vector3d(0,0,0.11);
 		dx_des_.setZero();
 
 		for (auto& dPhi : vec_dPhi_) {
@@ -89,7 +89,7 @@ public:
 
 		// Initialize pivot point filter
 		op_point_filter_.setDimension(3);
-		op_point_filter_.setCutoffFrequency(0.5);
+		op_point_filter_.setCutoffFrequency(0.2);
 	}
 
 	/***** Public functions *****/
@@ -134,7 +134,7 @@ protected:
 	const int kRedisPort = 6379;
 
 	// Redis keys:
-	const std::string kRedisKeyPrefix = "cs225a::";
+	const std::string kRedisKeyPrefix = RedisServer::KEY_PREFIX;
 	// - write:
 	const std::string KEY_COMMAND_TORQUES;
 	const std::string KEY_EE_POS;
@@ -174,6 +174,7 @@ protected:
 	ControllerStatus alignBottleCap();
 	ControllerStatus alignBottleCapExponentialDamping();
 	ControllerStatus alignBottleCapSimple();
+	ControllerStatus alignBottleCapForce();
 	ControllerStatus checkAlignment();
 	ControllerStatus screwBottleCap();
 	ControllerStatus rewindBottleCap();

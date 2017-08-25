@@ -50,16 +50,18 @@ void DemoProject::readRedisValues() {
 	Eigen::VectorXd F_sensor_6d = redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE);
 	
 	// Offset moment bias
-	F_sensor_6d.head(3) += Eigen::Vector3d(-0.15, 0.37, 0);
-	F_sensor_6d.tail(3) += Eigen::Vector3d(0.19, 0., 0.);
+	F_sensor_6d.head(3) += Eigen::Vector3d(0.05, -0.59, -5.0);
+	F_sensor_6d.tail(3) += Eigen::Vector3d(-0.168, 0.043, -0.016);
 
 	// Transform sensor measurements to EE frame
 	R_sensor_to_ee_ << -1/sqrt(2), -1/sqrt(2), 	0,
 	                   1/sqrt(2),  -1/sqrt(2), 	0,
 	                   0, 		   0, 		  	1;
 
-	F_sensor_ = R_sensor_to_ee_ * F_sensor_6d.head(3);
-	M_sensor_ = R_sensor_to_ee_ * F_sensor_6d.tail(3);
+	// F_sensor_ = R_sensor_to_ee_ * F_sensor_6d.head(3);
+	// M_sensor_ = R_sensor_to_ee_ * F_sensor_6d.tail(3);
+	F_sensor_ = F_sensor_6d.head(3);
+	M_sensor_ = F_sensor_6d.tail(3);
 
 	// Set moments to zero when they are outside of a range to avoid vibrations
 	// for (int i = 0; i<3;i++){
@@ -84,6 +86,8 @@ void DemoProject::writeRedisValues() {
 
 	// angle between contact surface normal and cap normal
 	redis_.set(THETA, to_string(theta));
+
+	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tasks::op_point", op_point_);
 
 	// Send torques
 	redis_.setEigenMatrix(KEY_COMMAND_TORQUES, command_torques_);
@@ -110,7 +114,8 @@ Eigen::Vector3d DemoProject::estimatePivotPoint() {
  	 *   x_pivot = x_ee + r_orth = x_ee + (w x v)
  	 */
 	Eigen::Vector3d x_pivot = x_ + w_.cross(dx_);
-	return Eigen::Vector3d(op_point_filter_.update(x_pivot));
+	return x_pivot;
+	// return Eigen::Vector3d(op_point_filter_.update(x_pivot));
 }
 
 /**
@@ -123,9 +128,11 @@ void DemoProject::updateModel() {
 	robot->updateModel();
 
 	// Forward kinematics
-	robot->position(x_, "link6", Eigen::Vector3d::Zero());
+	// robot->position(x_, "link6", Eigen::Vector3d::Zero());
+	robot->position(x_, "link6", Eigen::Vector3d(0,0,0.11));
 	robot->rotation(R_ee_to_base_, "link6");
-	robot->linearVelocity(dx_, "link6", Eigen::Vector3d::Zero());
+	// robot->linearVelocity(dx_, "link6", Eigen::Vector3d::Zero());
+	robot->linearVelocity(dx_, "link6", Eigen::Vector3d(0,0,0.11));
 	robot->angularVelocity(w_, "link6");
 	theta = acos(abs(F_sensor_.dot(Eigen::Vector3d(0,0,1))) / F_sensor_.norm());
 
@@ -158,7 +165,8 @@ void DemoProject::updateModel() {
 DemoProject::ControllerStatus DemoProject::computeJointSpaceControlTorques() {
 	try {
 		int flag = stoi(redis_.get(KEY_UI_FLAG));
-		if (flag) return FINISHED;	
+		if (flag) return FINISHED;
+		else return RUNNING;
 	} catch (std::exception& e) {
 		cout << e.what() << endl;
 	}
@@ -310,7 +318,13 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapExponentialDamping() {
 DemoProject::ControllerStatus DemoProject::alignBottleCapSimple() {
 	// Position - set xdes in the opposite direction to the contact force to apply a constant F in that direction
 	Eigen::Vector3d x_des_ee;
-	x_des_ee = - (F_sensor_ / F_sensor_.norm());
+	if (F_sensor_.norm() < 5) {
+		x_des_ee = Eigen::Vector3d(0,0,0.025);
+	} else {
+		x_des_ee = - 0.025 * (F_sensor_ / F_sensor_.norm());
+		x_des_ee += Eigen::Vector3d(0,0,0.025);
+	}
+
 	robot->position(x_des_, "link6", x_des_ee);
 	Eigen::Vector3d x_err = x_ - x_des_;
 	Eigen::Vector3d dx_err = dx_ - dx_des_;
@@ -326,21 +340,69 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapSimple() {
 	Eigen::VectorXd F_joint = robot->_M * ddq; 
 
 	// Position-orientation combined
-	// Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
-	// Eigen::VectorXd ddxdw(6);
-	// ddxdw << ddx, dw;
-	// command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
+	Eigen::VectorXd ddxdw(6);
+	ddxdw << ddx, dw;
+	Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
+	command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
 
 	// Orientation in nullspace of position
-	Eigen::Vector3d F_x = Lambda_x_cap_ * ddx;
-	Eigen::Vector3d F_r = Lambda_r_cap_ * dw;
-	command_torques_ = Jv_cap_.transpose() * F_x + Nv_cap_.transpose() * F_r + Nvw_cap_.transpose() * F_joint;
+	// Eigen::Vector3d F_x = Lambda_x_cap_ * ddx;
+	// Eigen::Vector3d F_r = Lambda_r_cap_ * dw;
+	// command_torques_ = Jv_cap_.transpose() * F_x + Nv_cap_.transpose() * F_r + Nvw_cap_.transpose() * F_joint;
 
 	// Finish if sensed moments and angular velocity are zero
 	if ((M_sensor_.norm() <= 0.1) && (w_.norm() < 0.01) && (F_sensor_(2) < -1.0)) return FINISHED;
 
 	return RUNNING;
 }
+
+/**
+ * DemoProject::alignBottleCapSimple()
+ * ----------------------------------------------------
+ * Controller to move end effector to desired position.
+ */
+DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
+	// Position - set xdes in the opposite direction to the contact force to apply a constant F in that direction
+	Eigen::Vector3d x_des_ee;
+	if (F_sensor_.norm() < 5) {
+		x_des_ee = Eigen::Vector3d(0,0,0.135);
+	} else {
+		// x_des_ee = -0.025 * (F_sensor_ / F_sensor_.norm());
+		x_des_ee = Eigen::Vector3d(0,0,0.135);
+	}
+
+	robot->position(x_des_, "link6", x_des_ee);
+	Eigen::Vector3d x_err = x_ - x_des_;
+	Eigen::Vector3d dx_err = dx_ - dx_des_;
+	Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
+
+	// Orientation
+	Eigen::Vector3d dPhi;
+	dPhi = -R_ee_to_base_ * M_sensor_;
+	Eigen::Vector3d dw = -kp_ori_ * dPhi - kv_ori_ * w_;
+
+	// Nullspace damping	
+	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
+	Eigen::VectorXd F_joint = robot->_M * ddq; 
+
+	// // Position-orientation combined
+	// Eigen::VectorXd ddxdw(6);
+	// ddxdw << ddx, dw;
+	// Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
+	// command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
+
+	// Orientation in nullspace of position
+	redis_.setEigenMatrix("sai2::kuka_iiwa::tasks::lambda_x_cap", Lambda_x_cap_);
+	Eigen::Vector3d F_x = Lambda_x_cap_ * ddx;
+	Eigen::Vector3d F_r = Lambda_r_cap_ * dw;
+	command_torques_ = Jv_cap_.transpose() * F_x + Jw_cap_.transpose() * F_r + Nvw_cap_.transpose() * F_joint;
+
+	// Finish if sensed moments and angular velocity are zero
+	if ((M_sensor_.norm() <= 0.1) && (w_.norm() < 0.01) && (F_sensor_(2) < -1.0)) return FINISHED;
+
+	return RUNNING;
+}
+
 
 /**
  * DemoProject::checkAlignment()
@@ -364,7 +426,7 @@ DemoProject::ControllerStatus DemoProject::checkAlignment() {
  */
 DemoProject::ControllerStatus DemoProject::rewindBottleCap() {
 	// Position - set xdes below the current position in z to apply a constant downward force
-	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.05));
+	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.16));
 	Eigen::Vector3d x_err = x_ - x_des_;
 	Eigen::Vector3d dx_err = dx_ - dx_des_;
 	Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
@@ -397,7 +459,7 @@ DemoProject::ControllerStatus DemoProject::rewindBottleCap() {
  */
 DemoProject::ControllerStatus DemoProject::screwBottleCap() {
 	// Position - set xdes below the current position in z to apply a constant downward force
-	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.05));
+	robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.16));
 	Eigen::Vector3d x_err = x_ - x_des_;
 	Eigen::Vector3d dx_err = dx_ - dx_des_;
 	Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
@@ -504,7 +566,7 @@ void DemoProject::runLoop() {
 			
 			// Screw cap
 			case ALIGN_BOTTLE_CAP:
-				if (alignBottleCapSimple() == FINISHED) {  //alignBottleCapExponentialDamping //alignBottleCap //alignBottleCapSimple
+				if (alignBottleCapForce() == FINISHED) {  //alignBottleCapExponentialDamping //alignBottleCap //alignBottleCapSimple
 					cout << "ALIGN- Bottle cap aligned. Switching to check alignment." << endl;
 					controller_state_ = CHECK_ALIGNMENT;
 					t_alignment_ = timer_.elapsedTime();
@@ -515,7 +577,7 @@ void DemoProject::runLoop() {
 				switch (checkAlignment()) {
 					case FINISHED:
 						cout << "CHECK- Bottle cap aligned. Switching to rewind cap." << endl;
-						controller_state_ = ALIGN_BOTTLE_CAP; //REWIND_BOTTLE_CAP
+						controller_state_ = ALIGN_BOTTLE_CAP;//REWIND_BOTTLE_CAP;//ALIGN_BOTTLE_CAP;
 						break;
 					case FAILED:
 						cout << "CHECK- Bottle cap not aligned. Switching back to align bottle cap." << endl;

@@ -27,7 +27,7 @@ static const string CAMERA_NAME = "camera_fixed";
 
 // redis keys: 
 // NOTE: keys are formatted to be: REDIS_KEY_PREFIX::<robot-name>::<KEY>
-static const string REDIS_KEY_PREFIX = "cs225a::";
+static const string REDIS_KEY_PREFIX = RedisServer::KEY_PREFIX;
 // - write:
 static string JOINT_INTERACTION_TORQUES_COMMANDED_KEY = "::actuators::fgc_interact";
 // - read:
