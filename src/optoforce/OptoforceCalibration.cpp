@@ -141,7 +141,7 @@ int main() {
 		// Find gravity in ee frame
 		Eigen::Matrix3d R_ee_to_base;
 		robot->rotation(R_ee_to_base, ee_link_name);
-		Eigen::Vector3d z_ee = R_ee_to_base.transpose() * Eigen::Vector3d(0,0,-1);
+		Eigen::Vector3d z_ee = R_ee_to_base.transpose() * Eigen::Vector3d(0, 0, -1);
 
 		// Attempt to get force-torque measurements from sensor
 		Eigen::VectorXd FM_sensor = Eigen::VectorXd::Zero(6);
@@ -205,16 +205,16 @@ int main() {
 				// (4) If you've visited all calibration locations -> Calculate values, end calibration, and stop robot
 
 				/**
- 				 * Calculate mass and Fb
- 				 *
- 				 * | Fs^(1) |   | z^(1) I |   | mg |
- 				 * |    .   | = |    .    | * | Fb |
- 				 * | Fs^(n) |   | z^(n) I |
- 				 *
- 				 * | mg |   | z^(1) I |+   | Fs^(1) |
- 				 * | Fb | = |    .    |  * |    .   |
- 				 *          | z^(n) I |    | Fs^(n) |
- 				 */
+				 * Calculate mass and Fb
+				 *
+				 * | Fs^(1) |   | z^(1) I |   | mg |
+				 * |  ...   | = |   ...   | * | Fb |
+				 * | Fs^(n) |   | z^(n) I |
+				 *
+				 * | mg |   | z^(1) I |+   | Fs^(1) |
+				 * | Fb | = |   ...   |  * |  ...   |
+				 *          | z^(n) I |    | Fs^(n) |
+				 */
 				Eigen::MatrixXd z_I(3*kNumCalibrationLocations, 4);
 				Eigen::VectorXd Fs_stack(3*kNumCalibrationLocations);
 				for (int i = 0; i < kNumCalibrationLocations; i++) {
@@ -228,15 +228,15 @@ int main() {
 
 				/**
 				 * Calculate r and Mb
- 				 *
- 				 * | Ms^(1) |   | -[z^(1)]x I |   | rmg |
- 				 * |    .   | = |      .      | * | Mb  |
- 				 * | Ms^(n) |   | -[z^(n)]x I |
- 				 *
- 				 * | rmg |   | -[z^(1)]x I |+   | Ms^(1) |
- 				 * | Mb  | = |      .      |  * |    .   |
- 				 *           | -[z^(n)]x I |    | Ms^(n) |
- 				 */
+				 *
+				 * | Ms^(1) |   | -[z^(1)]x I |   | rmg |
+				 * |  ...   | = |     ...     | * | Mb  |
+				 * | Ms^(n) |   | -[z^(n)]x I |
+				 *
+				 * | rmg |   | -[z^(1)]x I |+   | Ms^(1) |
+				 * | Mb  | = |     ...     |  * |  ...   |
+				 *           | -[z^(n)]x I |    | Ms^(n) |
+				 */
 				Eigen::MatrixXd zx_I(3*kNumCalibrationLocations, 6);
 				Eigen::VectorXd Ms_stack(3*kNumCalibrationLocations);
 				for (int i = 0; i < kNumCalibrationLocations; i++) {
