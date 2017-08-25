@@ -37,7 +37,6 @@ static const double kVelocityEpsilon = 0.005;
 static const int kNumMeasurements = 500;
 static const double kMaxVelocity = 1.0;
 static const double kControlFreq = 1000;
-static const Eigen::Vector3d g(0, 0, -9.81);
 
 // Transform sensor measurements to ee frame
 static const Eigen::Matrix3d R_sensor_to_ee = Eigen::Matrix3d::Identity();
@@ -106,7 +105,7 @@ int main() {
 	const int kNumCalibrationLocations = vec_q_des.size();
 
 	// Vector of force sensor readings at each location
-	std::vector<Eigen::Vector3d> vec_Fs, vec_Ms, vec_gs;
+	std::vector<Eigen::Vector3d> vec_Fs, vec_Ms, vec_zs;
 
 	// Index variables
 	int idx_location = 0;    // Out of kNumCalibrationLocations
@@ -142,7 +141,7 @@ int main() {
 		// Find gravity in ee frame
 		Eigen::Matrix3d R_ee_to_base;
 		robot->rotation(R_ee_to_base, ee_link_name);
-		Eigen::Vector3d g_ee = R_ee_to_base.transpose() * g;
+		Eigen::Vector3d z_ee = R_ee_to_base.transpose() * Eigen::Vector3d(0,0,-1);
 
 		// Attempt to get force-torque measurements from sensor
 		Eigen::VectorXd FM_sensor = Eigen::VectorXd::Zero(6);
@@ -165,7 +164,7 @@ int main() {
 				cout << "pos #" << idx_location << " -location reached" << endl;
 				vec_Fs.push_back(Eigen::Vector3d::Zero());
 				vec_Ms.push_back(Eigen::Vector3d::Zero());
-				vec_gs.push_back(Eigen::Vector3d::Zero());
+				vec_zs.push_back(Eigen::Vector3d::Zero());
 				calibrationState = CALIBRATION_SENSING;
 			}
 
@@ -174,7 +173,7 @@ int main() {
 			// (1) Accumulate Fs and Ms values in appropriate location slots
 			vec_Fs[idx_location] += F_sensor_ee;
 			vec_Ms[idx_location] += M_sensor_ee;
-			vec_gs[idx_location] += g_ee;
+			vec_zs[idx_location] += z_ee;
 
 			idx_measurement++;
 
@@ -188,14 +187,14 @@ int main() {
 		} else if (calibrationState == CALIBRATION_MASS_CALCULATION) {
 
 			// (2) Average values of sensed measurements for this position (this will improve precision)
-			vec_Fs.back() /= kNumMeasurements;
-			vec_Ms.back() /= kNumMeasurements;
-			vec_gs.back() /= kNumMeasurements;
+			vec_Fs[idx_location] /= kNumMeasurements;
+			vec_Ms[idx_location] /= kNumMeasurements;
+			vec_zs[idx_location].normalize();
 
 			cout << "pos #" << idx_location << " Fs, Ms, gs: "
 			     << vec_Fs[idx_location].transpose() << "; "
 			     << vec_Ms[idx_location].transpose() << "; "
-			     << vec_gs[idx_location].transpose() << endl;
+			     << vec_zs[idx_location].transpose() << endl;
 
 			idx_location++;
 
@@ -205,12 +204,21 @@ int main() {
 			} else {
 				// (4) If you've visited all calibration locations -> Calculate values, end calibration, and stop robot
 
-				// Calculate mass and Fb
+				/**
+ 				 * Calculate mass and Fb
+ 				 *
+ 				 * | Fs^(1) |   | z^(1) I |   | mg |
+ 				 * |    .   | = |    .    | * | Fb |
+ 				 * | Fs^(n) |   | z^(n) I |
+ 				 *
+ 				 * | mg |   | z^(1) I |+   | Fs^(1) |
+ 				 * | Fb | = |    .    |  * |    .   |
+ 				 *          | z^(n) I |    | Fs^(n) |
+ 				 */
 				Eigen::MatrixXd z_I(3*kNumCalibrationLocations, 4);
 				Eigen::VectorXd Fs_stack(3*kNumCalibrationLocations);
 				for (int i = 0; i < kNumCalibrationLocations; i++) {
-					// TODO: Verify norm is 9.81
-					z_I.block(3*i,0,3,1) = vec_gs[i] / vec_gs[i].norm();
+					z_I.block(3*i,0,3,1) = vec_zs[i];
 					z_I.block(3*i,1,3,3) = Eigen::Matrix3d::Identity();
 					Fs_stack.segment(3*i,3) = vec_Fs[i];
 				}
@@ -218,12 +226,21 @@ int main() {
 				double m = mg_Fb(0) / 9.81;
 				Eigen::Vector3d Fb = mg_Fb.tail(3);
 
-				// Calculate r and Mb
+				/**
+				 * Calculate r and Mb
+ 				 *
+ 				 * | Ms^(1) |   | -[z^(1)]x I |   | rmg |
+ 				 * |    .   | = |      .      | * | Mb  |
+ 				 * | Ms^(n) |   | -[z^(n)]x I |
+ 				 *
+ 				 * | rmg |   | -[z^(1)]x I |+   | Ms^(1) |
+ 				 * | Mb  | = |      .      |  * |    .   |
+ 				 *           | -[z^(n)]x I |    | Ms^(n) |
+ 				 */
 				Eigen::MatrixXd zx_I(3*kNumCalibrationLocations, 6);
 				Eigen::VectorXd Ms_stack(3*kNumCalibrationLocations);
 				for (int i = 0; i < kNumCalibrationLocations; i++) {
-					// TODO: Verify norm is 9.81
-					zx_I.block(3*i,0,3,3) = crossProductMatrix(-vec_gs[i] / vec_gs[i].norm());
+					zx_I.block(3*i,0,3,3) = crossProductMatrix(-vec_zs[i]);
 					zx_I.block(3*i,3,3,3) = Eigen::Matrix3d::Identity();
 					Ms_stack.segment(3*i,3) = vec_Ms[i];
 				}
