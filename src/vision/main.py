@@ -3,21 +3,86 @@ import numpy as np
 import cv2
 import threading
 import matplotlib.pyplot as plt
+from pylibfreenect2 import Freenect2, SyncMultiFrameListener
+from pylibfreenect2 import FrameType, Registration, Frame
+from pylibfreenect2 import createConsoleLogger, setGlobalLogger
+from pylibfreenect2 import LoggerLevel
+
+
+try:
+    from pylibfreenect2 import OpenCLPacketPipeline
+    pipeline = OpenCLPacketPipeline()
+except:
+    try:
+        from pylibfreenect2 import OpenGLPacketPipeline
+        pipeline = OpenGLPacketPipeline()
+    except:
+        from pylibfreenect2 import CpuPacketPipeline
+        pipeline = CpuPacketPipeline()
+print("Packet pipeline:", type(pipeline).__name__)
+
+# Create and set logger
+logger = createConsoleLogger(LoggerLevel.Debug)
+setGlobalLogger(logger)
+
+fn = Freenect2()
+num_devices = fn.enumerateDevices()
+if num_devices == 0:
+    print("No device connected!")
+    sys.exit(1)
+
+serial = fn.getDeviceSerialNumber(0)
+device = fn.openDevice(serial, pipeline=pipeline)
+
+listener = SyncMultiFrameListener(
+    FrameType.Color | FrameType.Ir | FrameType.Depth)
+
+# Register listeners
+device.setColorFrameListener(listener)
+device.setIrAndDepthFrameListener(listener)
+
+device.start()
+
+# NOTE: must be called after device.start()
+registration = Registration(device.getIrCameraParams(),
+                            device.getColorCameraParams())
+
+undistorted = Frame(512, 424, 4)
+registered = Frame(512, 424, 4)
+
+# Optinal parameters for registration
+# set True if you need
+need_bigdepth = False
+need_color_depth_map = False
+
+bigdepth = Frame(1920, 1082, 4) if need_bigdepth else None
+color_depth_map = np.zeros((424, 512),  np.int32).ravel() \
+    if need_color_depth_map else None
 
 SIZE_AVG_FILTER = 5
 
 class VideoStreamer:
     def __init__(self, live=False):
         plt.ion()
-        cap = cv2.VideoCapture(cv2.CAP_OPENNI_ASUS)
+
+        frames = listener.waitForNewFrame()
+
+        frame = frames["color"]
+        ir = frames["ir"]
+        depth = frames["depth"]
+
+        registration.apply(frame, depth, undistorted, registered,
+                       bigdepth=bigdepth,
+                       color_depth_map=color_depth_map)   
+        cap = cv2.VideoCapture(1)
         print(cv2.CAP_OPENNI_ASUS)
         _, frame = cap.read()
 
-        self.dim = frame.shape
-        self.frame_buffer = np.zeros((SIZE_AVG_FILTER,) + self.dim)
-        self.lock = threading.Lock()
-        self.is_live = live
-        self.run = True
+        #self.dim = frame.shape
+        #self.frame_buffer = np.zeros((SIZE_AVG_FILTER,) + self.dim)
+        #self.lock = threading.Lock()
+        #self.is_live = live
+        #self.run = True
 
         self.video_stream = threading.Thread(target=self.stream_video_thread, args=(cap,))
         self.video_stream.start()
