@@ -16,7 +16,7 @@
 
 struct SimulatorRobot {
 
-	const std::string kRedisKeyPrefix = "cs225a::";
+	const std::string kRedisKeyPrefix = "sai2::";
 	const std::string KEY_INTERACTION_COMMAND_TORQUES;
 	const std::string KEY_COMMAND_TORQUES;
 	const std::string KEY_JOINT_POSITIONS;
