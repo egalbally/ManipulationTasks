@@ -36,9 +36,6 @@ Author: Toki Migimatsu <takatoki@stanford.edu>
 #ifdef USE_KUKA_LBR_DYNAMICS
 	#include "KukaLBRDynamics/Robot.h"
 	#include <rbdl/Model.h>
-	#ifndef RBDL_BUILD_ADDON_URDFREADER
-		#error "Error: RBDL addon urdfmodel not enabled."
-	#endif
 	#include <rbdl/addons/urdfreader/urdfreader.h>
 #endif  // USE_KUKA_LBR_DYNAMICS
 

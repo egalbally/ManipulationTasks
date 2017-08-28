@@ -31,7 +31,7 @@ set (KUKA_DRIVER_SOURCE
 add_executable (${PROJECT_NAME} ${CS225A_COMMON_SOURCE} ${KUKA_DRIVER_SOURCE})
 
 # KUKA IIWA FRI SDK
-set(FRI_BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/FRI-Client-SDK)
+set(FRI_BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/KukaAPI/FRI-Client-SDK)
 set(FRI_INCLUDE_DIR ${FRI_BASE_DIR}/include)
 find_library(FRI_LIBRARIES FRIClient PATHS ${FRI_BASE_DIR}/lib)
 # set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-O2 -Wall -Wextra -pedantic -std=c++11 -fPIC -fopenmp")
@@ -39,22 +39,24 @@ find_library(FRI_LIBRARIES FRIClient PATHS ${FRI_BASE_DIR}/lib)
 
 # KUKA LBR Dynamics
 if (USE_KUKA_LBR_DYNAMICS)
-    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/KukaLBRDynamics)
-    option(USE_KUKA_RBDL "USE_KUKA_RBDL" OFF)
+    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/KukaAPI/KukaLBRDynamics)
+    option(USE_KUKA_RBDL "USE_KUKA_RBDL" ON)
     find_package (KukaLBRDynamics REQUIRED)
     include_directories(${KukaLBRDynamics_INCLUDE_DIRS})
     target_link_libraries(${PROJECT_NAME} ${KukaLBRDynamics_LIBRARIES})
     add_definitions(-DUSE_KUKA_LBR_DYNAMICS)
 
-    FIND_LIBRARY(TINYXML_LIBRARIES tinyxml2)
+    find_library(TINYXML_LIBRARIES tinyxml2)
     target_link_libraries(${PROJECT_NAME} ${TINYXML_LIBRARIES})
+    find_library(HIREDIS_LIBRARY hiredis)
+    target_link_libraries(${PROJECT_NAME} ${HIREDIS_LIBRARY})
 endif(USE_KUKA_LBR_DYNAMICS)
 
 # Filters
 SET(FILTERS_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/filters/)
 
 include_directories(${FRI_INCLUDE_DIR} ${FILTERS_INCLUDE_DIR})
-target_link_libraries(${PROJECT_NAME} ${CS225A_COMMON_LIBRARIES} ${FRI_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} ${FRI_LIBRARIES})
 
 # Hold pos demo controller
 add_executable(kuka_hold_pos ${CS225A_COMMON_SOURCE} kuka_hold_pos_main.cpp)
