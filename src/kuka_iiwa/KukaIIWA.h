@@ -44,7 +44,8 @@ Eigen::VectorXd VectorXd(double x0, double x1, double x2, double x3, double x4, 
 }
 
 // Default Kuka home position
-const Eigen::VectorXd HOME_POSITION  = VectorXd(90, -30, 0, 60, 0, -90, 0) * M_PI/180.0;
+const Eigen::VectorXd HOME_POSITION    = VectorXd(90, -30, 0, 60, 0, -90, 0) * M_PI/180.0;
+const Eigen::Vector3d HOME_POSITION_EE = Eigen::Vector3d(0, -0.6, 0.6);
 
 // Safety limits
 // TODO: Find real velocity and jerk limits
@@ -59,7 +60,7 @@ const Eigen::ArrayXd TORQUE_LIMITS   = VectorXd(176.0, 176.0, 110.0, 110.0, 110.
 const Eigen::ArrayXd JERK_LIMITS     = VectorXd(8.8, 8.8, 5.5, 5.5, 5.5, 2.0, 2.0);
 
 // Height limits for the wrist [low high]
-const double POS_WRIST_LIMITS[2] = {0.45, 2.05};
+const double POS_WRIST_LIMITS[2] = {0.45, 1.05};
 
 }
 
