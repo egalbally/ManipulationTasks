@@ -21,11 +21,8 @@ using namespace std;
  */
 void DemoProject::readRedisValues() {
 	// Read from Redis current sensor values
-	robot->_q = redis_.getEigenMatrix(KEY_JOINT_POSITIONS);
-	robot->_dq = redis_.getEigenMatrix(KEY_JOINT_VELOCITIES);
-
-	// Get current simulation timestamp from Redis
-	// t_curr_ = stod(redis_.get(KEY_TIMESTAMP));
+	robot->_q = redis_.getEigenMatrix(KukaIIWA::KEY_JOINT_POSITIONS);
+	robot->_dq = redis_.getEigenMatrix(KukaIIWA::KEY_JOINT_VELOCITIES);
 
 	// Read in KP and KV from Redis (can be changed on the fly in Redis)
 	kp_pos_ = stod(redis_.get(KEY_KP_POSITION));
@@ -47,19 +44,11 @@ void DemoProject::readRedisValues() {
 	ki_ori_exp = stod(redis_.get(KEY_KI_ORIENTATION_EXP));
 	kp_pos_exp = stod(redis_.get(KEY_KP_POSITION_EXP));
 
+	// Offset force bias
 	Eigen::VectorXd F_sensor_6d = redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE);
-	
-	// Offset moment bias
-	F_sensor_6d.head(3) += Eigen::Vector3d(0.05, -0.59, -5.0);
-	F_sensor_6d.tail(3) += Eigen::Vector3d(-0.168, 0.043, -0.016);
+	F_sensor_6d -= redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE_BIAS);
 
 	// Transform sensor measurements to EE frame
-	R_sensor_to_ee_ << -1/sqrt(2), -1/sqrt(2), 	0,
-	                   1/sqrt(2),  -1/sqrt(2), 	0,
-	                   0, 		   0, 		  	1;
-
-	// F_sensor_ = R_sensor_to_ee_ * F_sensor_6d.head(3);
-	// M_sensor_ = R_sensor_to_ee_ * F_sensor_6d.tail(3);
 	F_sensor_ = F_sensor_6d.head(3);
 	M_sensor_ = F_sensor_6d.tail(3);
 
@@ -68,10 +57,7 @@ void DemoProject::readRedisValues() {
 	// 	if (M_sensor_(i) < 0.13 && M_sensor_(i) > -0.13){ M_sensor_(i) = 0;}
 	// }
 	
-	Eigen::VectorXd F_controller(6); //forces in EE and capped moments in EE
-	F_controller << F_sensor_, M_sensor_;
-
-	redis_.setEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE + "_controller", F_controller);
+	redis_.setEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE + "_controller", F_sensor_6d);
 }
 
 /**
@@ -90,7 +76,7 @@ void DemoProject::writeRedisValues() {
 	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tasks::op_point", op_point_);
 
 	// Send torques
-	redis_.setEigenMatrix(KEY_COMMAND_TORQUES, command_torques_);
+	redis_.setEigenMatrix(KukaIIWA::KEY_COMMAND_TORQUES, command_torques_);
 }
 
 /**
@@ -129,32 +115,40 @@ void DemoProject::updateModel() {
 
 	// Forward kinematics
 	// robot->position(x_, "link6", Eigen::Vector3d::Zero());
-	robot->position(x_, "link6", Eigen::Vector3d(0,0,0.11));
-	robot->rotation(R_ee_to_base_, "link6");
+	x_ = robot->position("link6", kPosEndEffector);
+	R_ee_to_base_ = robot->rotation("link6");
 	// robot->linearVelocity(dx_, "link6", Eigen::Vector3d::Zero());
-	robot->linearVelocity(dx_, "link6", Eigen::Vector3d(0,0,0.11));
-	robot->angularVelocity(w_, "link6");
+	dx_ = robot->linearVelocity("link6", kPosEndEffector);
+	w_ = robot->angularVelocity("link6");
 	theta = acos(abs(F_sensor_.dot(Eigen::Vector3d(0,0,1))) / F_sensor_.norm());
 
 	// Jacobians
-	robot->J_0(J_cap_, "link6", Eigen::Vector3d(0,0,0.11));
-	robot->Jv(Jv_, "link6", Eigen::Vector3d::Zero());
-	robot->Jw(Jw_, "link6");
-
+	Eigen::MatrixXd Jbar_temp;
+	J_cap_ = robot->J("link6", kPosEndEffector);
+	Jv_ = robot->Jv("link6", Eigen::Vector3d::Zero());
+	Jw_ = robot->Jw("link6");
 	op_point_ = estimatePivotPoint();
-	robot->Jv(Jv_cap_, "link6", Eigen::Vector3d(0,0,0.11));
-	robot->nullspaceMatrix(N_cap_, J_cap_);
-	robot->nullspaceMatrix(Nv_, Jv_);
-	robot->nullspaceMatrix(Nv_cap_, Jv_cap_);
-	Jw_cap_ = Jw_ * Nv_cap_;
-	robot->nullspaceMatrix(Nvw_cap_, Jw_cap_, Nv_cap_);
+	Jv_cap_ = robot->Jv("link6", kPosEndEffector);
 
-	// Dynamics
-	robot->taskInertiaMatrixWithPseudoInv(Lambda_cap_, J_cap_);
-	robot->taskInertiaMatrixWithPseudoInv(Lambda_x_, Jv_);
-	robot->taskInertiaMatrixWithPseudoInv(Lambda_x_cap_, Jv_cap_);
-	robot->taskInertiaMatrixWithPseudoInv(Lambda_r_cap_, Jw_cap_);
-	robot->gravityVector(g_);
+	// robot->operationalSpaceMatrices(Lambda_cap_, Jbar_temp, N_cap_, J_cap_);
+	// robot->operationalSpaceMatrices(Lambda_x_, Jbar_temp, Nv_, Jv_);
+	robot->operationalSpaceMatrices(Lambda_x_cap_, Jbar_temp, Nv_cap_, Jv_cap_);
+	Jw_cap_ = Jw_ * Nv_cap_;
+	// robot->operationalSpaceMatrices(Lambda_r_cap_, Jbar_temp, Nvw_cap_, Jw_cap_, Nv_cap_);
+
+	// N_cap_ = robot->nullspaceMatrix(J_cap_);
+	// Nv_ = robot->nullspaceMatrix(Jv_);
+	// Nv_cap_ = robot->nullspaceMatrix(Jv_cap_);
+	// // Jw_cap_ = Jw_ * Nv_cap_;
+	// // std::cout << Jw_cap_.rows() << " " << Jw_cap_.cols() << "; " << Nv_cap_.rows() << " " << Nv_cap_.cols() << std::endl;
+	// Nvw_cap_ = robot->nullspaceMatrix(Jw_cap_, Nv_cap_);
+
+	// // Dynamics
+	// Lambda_cap_ = robot->taskInertiaMatrixWithPseudoInv(J_cap_);
+	// Lambda_x_ = robot->taskInertiaMatrixWithPseudoInv(Jv_);
+	// Lambda_x_cap_ = robot->taskInertiaMatrixWithPseudoInv(Jv_cap_);
+	// Lambda_r_cap_ = robot->taskInertiaMatrixWithPseudoInv(Jw_cap_);
+	g_ = robot->gravityVector();
 }
 
 /**
@@ -365,10 +359,10 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
 	// Position - set xdes in the opposite direction to the contact force to apply a constant F in that direction
 	Eigen::Vector3d x_des_ee;
 	if (F_sensor_.norm() < 5) {
-		x_des_ee = Eigen::Vector3d(0,0,0.135);
+		x_des_ee = Eigen::Vector3d(0,0,0.025) + kPosEndEffector;
 	} else {
 		// x_des_ee = -0.025 * (F_sensor_ / F_sensor_.norm());
-		x_des_ee = Eigen::Vector3d(0,0,0.135);
+		x_des_ee = Eigen::Vector3d(0,0,0.025) + kPosEndEffector;
 	}
 
 	robot->position(x_des_, "link6", x_des_ee);
@@ -395,7 +389,7 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
 	redis_.setEigenMatrix("sai2::kuka_iiwa::tasks::lambda_x_cap", Lambda_x_cap_);
 	Eigen::Vector3d F_x = Lambda_x_cap_ * ddx;
 	Eigen::Vector3d F_r = Lambda_r_cap_ * dw;
-	command_torques_ = Jv_cap_.transpose() * F_x + Jw_cap_.transpose() * F_r + Nvw_cap_.transpose() * F_joint;
+	command_torques_ = Jv_cap_.transpose() * F_x + Nv_cap_.transpose() * Jw_cap_.transpose() * F_r + Nvw_cap_.transpose() * F_joint;
 
 	// Finish if sensed moments and angular velocity are zero
 	if ((M_sensor_.norm() <= 0.1) && (w_.norm() < 0.01) && (F_sensor_(2) < -1.0)) return FINISHED;
@@ -499,7 +493,7 @@ void DemoProject::initialize() {
 
 	// Start redis client
 	// Make sure redis-server is running at localhost with default port 6379
-	redis_.connect(kRedisHostname, kRedisPort);
+	redis_.connect();
 
 	// Set gains in Redis if not initialized
 	redis_.set(KEY_KP_POSITION, to_string(kp_pos_));
@@ -620,23 +614,18 @@ void DemoProject::runLoop() {
 
 	// Zero out torques before quitting
 	command_torques_.setZero();
-	redis_.setEigenMatrix(KEY_COMMAND_TORQUES, command_torques_);
+	redis_.setEigenMatrix(KukaIIWA::KEY_COMMAND_TORQUES, command_torques_);
 }
 
 int main(int argc, char** argv) {
 
-	// Parse command line
-	if (argc != 4) {
-		cout << "Usage: demo_app <path-to-world.urdf> <path-to-robot.urdf> <robot-name>" << endl;
-		exit(0);
-	}
 	// Argument 0: executable name
 	// Argument 1: <path-to-world.urdf>
-	string world_file(argv[1]);
+	string world_file = "resources/demo_project/world.urdf";
 	// Argument 2: <path-to-robot.urdf>
-	string robot_file(argv[2]);
+	string robot_file = "resources/demo_project/kuka_iiwa.urdf";
 	// Argument 3: <robot-name>
-	string robot_name(argv[3]);
+	string robot_name = "kuka_iiwa";
 
 	// Set up signal handler
 	signal(SIGABRT, &stop);
@@ -650,7 +639,7 @@ int main(int argc, char** argv) {
 
 	// Start controller app
 	cout << "Initializing app with " << robot_name << endl;
-	DemoProject app(move(robot), robot_name);
+	DemoProject app(move(robot));
 	app.initialize();
 	cout << "App initialized. Waiting for Redis synchronization." << endl;
 	app.runLoop();
