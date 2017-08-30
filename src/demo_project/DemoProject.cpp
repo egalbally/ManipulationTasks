@@ -43,10 +43,17 @@ void DemoProject::readRedisValues() {
 	kv_ori_exp = stod(redis_.get(KEY_KV_ORIENTATION_EXP));
 	ki_ori_exp = stod(redis_.get(KEY_KI_ORIENTATION_EXP));
 	kp_pos_exp = stod(redis_.get(KEY_KP_POSITION_EXP));
+	kp_force = stod(redis_.get(KEY_KP_FORCE));
+	kv_force = stod(redis_.get(KEY_KV_FORCE));
+	ki_force = stod(redis_.get(KEY_KI_FORCE));
+	kp_moment = stod(redis_.get(KEY_KP_MOMENT));
+	kv_moment = stod(redis_.get(KEY_KV_MOMENT));
+	ki_moment = stod(redis_.get(KEY_KI_MOMENT));
 
 	// Offset force bias
 	Eigen::VectorXd F_sensor_6d = redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE);
 	F_sensor_6d -= redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE_BIAS);
+	F_sensor_6d = F_sensor_6d_filter_.update(F_sensor_6d);
 
 	// Transform sensor measurements to EE frame
 	F_sensor_ = F_sensor_6d.head(3);
@@ -114,27 +121,26 @@ void DemoProject::updateModel() {
 	robot->updateModel();
 
 	// Forward kinematics
-	// robot->position(x_, "link6", Eigen::Vector3d::Zero());
-	x_ = robot->position("link6", kPosEndEffector);
-	R_ee_to_base_ = robot->rotation("link6");
-	// robot->linearVelocity(dx_, "link6", Eigen::Vector3d::Zero());
+	x_  = robot->position("link6", kPosEndEffector);
 	dx_ = robot->linearVelocity("link6", kPosEndEffector);
-	w_ = robot->angularVelocity("link6");
+	w_  = robot->angularVelocity("link6");
+	R_ee_to_base_ = robot->rotation("link6");
 	theta = acos(abs(F_sensor_.dot(Eigen::Vector3d(0,0,1))) / F_sensor_.norm());
 
 	// Jacobians
-	Eigen::MatrixXd Jbar_temp;
 	J_cap_ = robot->J("link6", kPosEndEffector);
 	Jv_ = robot->Jv("link6", Eigen::Vector3d::Zero());
 	Jw_ = robot->Jw("link6");
 	op_point_ = estimatePivotPoint();
 	Jv_cap_ = robot->Jv("link6", kPosEndEffector);
 
-	// robot->operationalSpaceMatrices(Lambda_cap_, Jbar_temp, N_cap_, J_cap_);
-	// robot->operationalSpaceMatrices(Lambda_x_, Jbar_temp, Nv_, Jv_);
+	// Dynamics
+	Eigen::MatrixXd Jbar_temp;
+	robot->operationalSpaceMatrices(Lambda_cap_, Jbar_temp, N_cap_, J_cap_);
+	robot->operationalSpaceMatrices(Lambda_x_, Jbar_temp, Nv_, Jv_);
 	robot->operationalSpaceMatrices(Lambda_x_cap_, Jbar_temp, Nv_cap_, Jv_cap_);
 	Jw_cap_ = Jw_ * Nv_cap_;
-	// robot->operationalSpaceMatrices(Lambda_r_cap_, Jbar_temp, Nvw_cap_, Jw_cap_, Nv_cap_);
+	robot->operationalSpaceMatrices(Lambda_r_cap_, Jbar_temp, Nvw_cap_, Jw_cap_, Nv_cap_);
 
 	// N_cap_ = robot->nullspaceMatrix(J_cap_);
 	// Nv_ = robot->nullspaceMatrix(Jv_);
@@ -356,26 +362,44 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapSimple() {
  * Controller to move end effector to desired position.
  */
 DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
-	// Position - set xdes in the opposite direction to the contact force to apply a constant F in that direction
-	Eigen::Vector3d x_des_ee;
-	if (F_sensor_.norm() < 5) {
-		x_des_ee = Eigen::Vector3d(0,0,0.025) + kPosEndEffector;
+	static Eigen::Vector3d integral_F_err = Eigen::Vector3d::Zero();
+	static Eigen::Vector3d integral_M_err = Eigen::Vector3d::Zero();
+
+	Eigen::Vector3d dx_err = dx_ - dx_des_;
+	Eigen::Vector3d w_err = w_;
+
+	// Force and moment error
+	Eigen::Vector3d F_des = R_ee_to_base_ * Eigen::Vector3d(0, 0, 5.0);
+	Eigen::Vector3d F_err = -R_ee_to_base_ * F_sensor_ - F_des;
+
+	Eigen::Vector3d M_des = R_ee_to_base_ * Eigen::Vector3d(0, 0, 0);
+	Eigen::Vector3d M_err = -R_ee_to_base_ * M_sensor_ - M_des;
+
+	// Integral error
+	if (F_err.norm() > 3) {
+		integral_F_err.setZero();
+		integral_M_err.setZero();
 	} else {
-		// x_des_ee = -0.025 * (F_sensor_ / F_sensor_.norm());
-		x_des_ee = Eigen::Vector3d(0,0,0.025) + kPosEndEffector;
+		integral_F_err += F_err / kControlFreq;
+		integral_M_err += M_err / kControlFreq;
 	}
 
-	robot->position(x_des_, "link6", x_des_ee);
-	Eigen::Vector3d x_err = x_ - x_des_;
-	Eigen::Vector3d dx_err = dx_ - dx_des_;
-	Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
+	// Control force
+	Eigen::Vector3d F_x = F_des - kp_force * F_err - ki_force * integral_F_err - kv_force * dx_err;
+	if (F_x.norm() > 3 * F_des.norm()) {
+		F_x = 3 * F_des.norm() / F_x.norm() * F_x;	
+	}
+	Eigen::Vector3d F_r = M_des - kp_moment * M_err - ki_moment * integral_M_err - kv_moment * w_;
 
-	// Orientation
-	Eigen::Vector3d dPhi;
-	dPhi = -R_ee_to_base_ * M_sensor_;
-	Eigen::Vector3d dw = -kp_ori_ * dPhi - kv_ori_ * w_;
+	// Redis
+	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tasks::F_x", F_x);
+	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tasks::F_err", F_err);
+	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tasks::F_err_integral", integral_F_err);
+	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tasks::F_r", F_r);
+	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tasks::M_err", M_err);
+	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tasks::M_err_integral", integral_M_err);
 
-	// Nullspace damping	
+	// Nullspace damping
 	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
 	Eigen::VectorXd F_joint = robot->_M * ddq; 
 
@@ -387,9 +411,9 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
 
 	// Orientation in nullspace of position
 	redis_.setEigenMatrix("sai2::kuka_iiwa::tasks::lambda_x_cap", Lambda_x_cap_);
-	Eigen::Vector3d F_x = Lambda_x_cap_ * ddx;
-	Eigen::Vector3d F_r = Lambda_r_cap_ * dw;
-	command_torques_ = Jv_cap_.transpose() * F_x + Nv_cap_.transpose() * Jw_cap_.transpose() * F_r + Nvw_cap_.transpose() * F_joint;
+	// Eigen::Vector3d F_x = Lambda_x_cap_ * ddx;
+	// Eigen::Vector3d F_r = Lambda_r_cap_ * dw;
+	command_torques_ = Jv_cap_.transpose() * F_x + Jw_cap_.transpose() * F_r;// + Nvw_cap_.transpose() * F_joint;
 
 	// Finish if sensed moments and angular velocity are zero
 	if ((M_sensor_.norm() <= 0.1) && (w_.norm() < 0.01) && (F_sensor_(2) < -1.0)) return FINISHED;
@@ -515,6 +539,12 @@ void DemoProject::initialize() {
 	redis_.set(KEY_KP_POSITION_EXP, to_string(kp_pos_exp));
 	redis_.set(KEY_MORE_SPEED, to_string(exp_moreSpeed));
 	redis_.set(KEY_LESS_DAMPING, to_string(exp_lessDamping));
+	redis_.set(KEY_KP_FORCE, to_string(kp_force));
+	redis_.set(KEY_KV_FORCE, to_string(kv_force));
+	redis_.set(KEY_KI_FORCE, to_string(ki_force));
+	redis_.set(KEY_KP_MOMENT, to_string(kp_moment));
+	redis_.set(KEY_KV_MOMENT, to_string(kv_moment));
+	redis_.set(KEY_KI_MOMENT, to_string(ki_moment));
 }
 
 /**
@@ -571,7 +601,7 @@ void DemoProject::runLoop() {
 				switch (checkAlignment()) {
 					case FINISHED:
 						cout << "CHECK- Bottle cap aligned. Switching to rewind cap." << endl;
-						controller_state_ = ALIGN_BOTTLE_CAP;//REWIND_BOTTLE_CAP;//ALIGN_BOTTLE_CAP;
+						controller_state_ = REWIND_BOTTLE_CAP;//REWIND_BOTTLE_CAP;//ALIGN_BOTTLE_CAP;
 						break;
 					case FAILED:
 						cout << "CHECK- Bottle cap not aligned. Switching back to align bottle cap." << endl;

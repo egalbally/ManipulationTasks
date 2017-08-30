@@ -42,6 +42,12 @@ const std::string KEY_KP_POSITION_EXP    = KukaIIWA::KEY_PREFIX + "tasks::kp_pos
 const std::string KEY_MORE_SPEED         = KukaIIWA::KEY_PREFIX + "tasks::more_speed";
 const std::string KEY_LESS_DAMPING       = KukaIIWA::KEY_PREFIX + "tasks::less_damping";
 const std::string THETA                  = KukaIIWA::KEY_PREFIX + "sensor::theta";
+const std::string KEY_KP_FORCE           = KukaIIWA::KEY_PREFIX + "tasks::kp_force";
+const std::string KEY_KV_FORCE           = KukaIIWA::KEY_PREFIX + "tasks::kv_force";
+const std::string KEY_KI_FORCE           = KukaIIWA::KEY_PREFIX + "tasks::ki_force";
+const std::string KEY_KP_MOMENT          = KukaIIWA::KEY_PREFIX + "tasks::kp_moment";
+const std::string KEY_KV_MOMENT          = KukaIIWA::KEY_PREFIX + "tasks::kv_moment";
+const std::string KEY_KI_MOMENT          = KukaIIWA::KEY_PREFIX + "tasks::ki_moment";
 
 class DemoProject {
 
@@ -58,6 +64,10 @@ public:
 		// Initialize pivot point filter
 		op_point_filter_.setDimension(3);
 		op_point_filter_.setCutoffFrequency(0.2);
+
+		// Initialize force sensor filter
+		F_sensor_6d_filter_.setDimension(6);
+		F_sensor_6d_filter_.setCutoffFrequency(0.01);
 	}
 
 	/***** Public functions *****/
@@ -143,6 +153,7 @@ protected:
 	Eigen::VectorXd g_;
 	Eigen::Vector3d x_, dx_, w_;
 	Eigen::Vector3d F_sensor_, M_sensor_;
+	ButterworthFilter F_sensor_6d_filter_;
 	Eigen::Matrix3d R_ee_to_base_;
 
 	std::vector<Eigen::Vector3d> vec_dPhi_ = std::vector<Eigen::Vector3d>(kIntegraldPhiWindow);
@@ -176,6 +187,12 @@ protected:
 	double kv_ori_exp = 20; //10
 	double ki_ori_exp = 1.5;
 	double kp_pos_exp = 30;	//15
+	double kp_force = 0.5;
+	double kv_force = 0;
+	double ki_force = 1;
+	double kp_moment = 1;
+	double kv_moment = 0;
+	double ki_moment = 1;
 
 	// angle between contact surface normal and cap normal
 	double theta;

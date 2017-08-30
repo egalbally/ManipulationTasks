@@ -85,7 +85,7 @@ protected:
 	const double kCutoffFreq = 0.1;
 
 	// Torque offsets
-	Eigen::VectorXd torque_offset_ = KukaIIWA::VectorXd(-0.5, 1.0, 0.0, -0.7, 0.0, 0.05, 0.0);
+	Eigen::VectorXd torque_offset_ = KukaIIWA::VectorXd(-0.5, 1.0, 0.0, -0.7, 0.0, 0.0, 0.0);
 
 #ifdef USE_KUKA_LBR_DYNAMICS
 	// Constant end effector properties (without tool.xml)
