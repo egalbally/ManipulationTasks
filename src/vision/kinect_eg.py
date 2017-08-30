@@ -46,6 +46,12 @@ device.start()
 registration = Registration(device.getIrCameraParams(),
                             device.getColorCameraParams())
 
+
+param = device.getIrCameraParams()
+print param.cx
+array = np.array([[param.fx, param.fy, param.cx, param.cy]])
+
+print array
 undistorted = Frame(512, 424, 4)
 registered = Frame(512, 424, 4)
 
@@ -87,6 +93,7 @@ while True:
 
     listener.release(frames)
 
+    #print registered.asarray().shape 
     key = cv2.waitKey(delay=1)
     if key == ord('q'):
         break
