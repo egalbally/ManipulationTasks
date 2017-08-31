@@ -86,7 +86,9 @@ protected:
 		ALIGN_BOTTLE_CAP,
 		CHECK_ALIGNMENT,
 		REWIND_BOTTLE_CAP,
-		SCREW_BOTTLE_CAP
+		STABILIZE_REWIND,
+		SCREW_BOTTLE_CAP,
+		CHECK_SCREW
 	};
 
 	// Return values from computeControlTorques() methods
@@ -106,7 +108,34 @@ protected:
 	const int kInitializationPause = 1e6;  // 1ms pause before starting control loop
 
 	const int kIntegraldPhiWindow = 2000;
-	const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,0,0.11);
+	
+	
+
+
+
+
+	// CHANGE THE OPERATIONAL POINT!!!!!!!!!!!!
+
+	// Medium bottle
+	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,0.035,0.12);
+	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,-0.035,0.12);
+	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0.035,0,0.12);
+	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(-0.035,0,0.12);
+
+	// Small bottle 
+	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,0.02,0.135);
+	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,-0.02,0.135);
+	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0.02,0,0.135);
+	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(-0.02,0,0.135);
+
+	// Large jar
+	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,0.0575,0.12);
+	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,-0.0575,0.12);
+	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0.0575,0,0.12);
+	const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(-0.0575,0,0.12);
+
+
+
 
 	/***** Member functions *****/
 
@@ -122,6 +151,9 @@ protected:
 	ControllerStatus checkAlignment();
 	ControllerStatus screwBottleCap();
 	ControllerStatus rewindBottleCap();
+	ControllerStatus stabilizeRewind();
+	ControllerStatus checkScrew();
+
 	Eigen::Vector3d estimatePivotPoint();
 
 	/***** Member variables *****/
@@ -152,7 +184,7 @@ protected:
 	Eigen::MatrixXd Lambda_cap_, Lambda_x_, Lambda_x_cap_, Lambda_r_cap_;
 	Eigen::VectorXd g_;
 	Eigen::Vector3d x_, dx_, w_;
-	Eigen::Vector3d F_sensor_, M_sensor_;
+	Eigen::Vector3d F_sensor_, M_sensor_, F_x_ee_;
 	ButterworthFilter F_sensor_6d_filter_;
 	Eigen::Matrix3d R_ee_to_base_;
 
@@ -162,11 +194,10 @@ protected:
 	double t_alignment_;
 	const double kAlignmentWait = 1;
 	ButterworthFilter op_point_filter_;
-	Eigen::Vector3d op_point_;
+	Eigen::Vector3d op_point_ = kPosEndEffector;
 
 	// Default gains (used only when keys are nonexistent in Redis)
-	double kp_pos_ = 30;
-	//double kp_pos_ = 40;
+	double kp_pos_ = 15;
 	double kv_pos_ = 0;
 	double kp_ori_ = 4;
 	double kv_ori_ = 0.5;
@@ -181,16 +212,16 @@ protected:
 	double kp_bias_ = 0.0; 
 
 	// gains for exponential damping during alignment
-	double exp_moreSpeed = 2; //.8
+	double exp_moreSpeed = 2; 
 	double exp_lessDamping = 2;
 	double kp_ori_exp = 15;
-	double kv_ori_exp = 20; //10
+	double kv_ori_exp = 20; 
 	double ki_ori_exp = 1.5;
-	double kp_pos_exp = 30;	//15
+	double kp_pos_exp = 30;	
 	double kp_force = 0.5;
 	double kv_force = 0;
 	double ki_force = 1;
-	double kp_moment = 1;
+	double kp_moment = 2; //3 (for small and medium)
 	double kv_moment = 0;
 	double ki_moment = 1;
 

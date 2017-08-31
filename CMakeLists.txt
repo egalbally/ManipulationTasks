@@ -11,7 +11,7 @@ include_directories(/usr/include /usr/local/include)
 set(CS225A_COMMON_SOURCE
 	${PROJECT_SOURCE_DIR}/src/redis/RedisClient.cpp
 	${PROJECT_SOURCE_DIR}/src/timer/LoopTimer.cpp
-	# ${PROJECT_SOURCE_DIR}/src/optitrack/OptiTrackClient.cpp
+	${PROJECT_SOURCE_DIR}/src/optitrack/OptiTrackClient.cpp
 )
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
@@ -63,7 +63,7 @@ add_subdirectory(src/simulation)
 # add_subdirectory(src/hw3)
 add_subdirectory(src/demo_project)
 
-# add_subdirectory(src/optitrack)
+add_subdirectory(src/optitrack)
 add_subdirectory(src/optoforce)
 add_subdirectory(src/kuka_iiwa)
 # add_subdirectory(src/kinova_jaco)
