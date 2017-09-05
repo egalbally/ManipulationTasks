@@ -1,13 +1,12 @@
-#!/usr/bin/env python
+# coding: utf-8
+
 import numpy as np
 import cv2
-import threading
-import matplotlib.pyplot as plt
+import sys
 from pylibfreenect2 import Freenect2, SyncMultiFrameListener
 from pylibfreenect2 import FrameType, Registration, Frame
 from pylibfreenect2 import createConsoleLogger, setGlobalLogger
 from pylibfreenect2 import LoggerLevel
-
 
 try:
     from pylibfreenect2 import OpenCLPacketPipeline
@@ -47,101 +46,64 @@ device.start()
 registration = Registration(device.getIrCameraParams(),
                             device.getColorCameraParams())
 
+
+
 undistorted = Frame(512, 424, 4)
 registered = Frame(512, 424, 4)
 
 # Optinal parameters for registration
 # set True if you need
-need_bigdepth = False
-need_color_depth_map = False
+need_bigdepth = True
+need_color_depth_map = True
 
 bigdepth = Frame(1920, 1082, 4) if need_bigdepth else None
 color_depth_map = np.zeros((424, 512),  np.int32).ravel() \
     if need_color_depth_map else None
 
-SIZE_AVG_FILTER = 5
+while True:
+    frames = listener.waitForNewFrame()
 
-class VideoStreamer:
-    def __init__(self, live=False):
-        plt.ion()
+    color = frames["color"]
+    ir = frames["ir"]
+    depth = frames["depth"]
 
-        frames = listener.waitForNewFrame()
-
-        frame = frames["color"]
-        ir = frames["ir"]
-        depth = frames["depth"]
-
-        registration.apply(frame, depth, undistorted, registered,
+    registration.apply(color, depth, undistorted, registered,
                        bigdepth=bigdepth,
-                       color_depth_map=color_depth_map)   
-        cap = cv2.VideoCapture(1)
-        print(cv2.CAP_OPENNI_ASUS)
-        _, frame = cap.read()
+                       color_depth_map=color_depth_map)
 
-        #self.dim = frame.shape
-        #self.frame_buffer = np.zeros((SIZE_AVG_FILTER,) + self.dim)
-        #self.lock = threading.Lock()
-        #self.is_live = live
-        #self.run = True
+    # NOTE for visualization:
+    # cv2.imshow without OpenGL backend seems to be quite slow to draw all
+    # things below. Try commenting out some imshow if you don't have a fast
+    # visualization backend.
+    #cv2.imshow("ir", ir.asarray() / 65535.)
+    cv2.imshow("depth", depth.asarray() / 4500.)
+    cv2.imshow("color", cv2.resize(color.asarray(),
+                                   (int(1920 / 3), int(1080 / 3))))
+    cv2.imshow("registered", registered.asarray(np.uint8))
 
-        self.video_stream = threading.Thread(target=self.stream_video_thread, args=(cap,))
-        self.video_stream.start()
+    if need_bigdepth:
+        cv2.imshow("bigdepth", cv2.resize(bigdepth.asarray(np.float32),
+                                          (int(1920 / 3), int(1082 / 3))))
+    if need_color_depth_map:
+        cv2.imshow("color_depth_map", color_depth_map.reshape(424, 512))
 
-    def imshow(self, img, name="Image"):
-        cv2.imshow(name, img)
-        if not self.is_live:
-            cv2.waitKey(0)
-
-    def stream_video_thread(self, cap):
-        self.is_live = True
-
-        idx = 0
-        while self.run:
-            _, frame = cap.read()
-            self.lock.acquire()
-            self.frame_buffer[idx,:,:,:] = frame
-            self.lock.release()
-
-            idx += 1
-            if idx >= SIZE_AVG_FILTER:
-                idx = 0
-
-    def capture_video(self):
-        if self.is_live:
-            while True:
-                self.lock.acquire()
-                frame = self.frame_buffer.mean(axis=0).round().astype(np.uint8)
-                self.lock.release()
-
-                cv2.imshow("Video", frame)
-
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord('q') or key == ord('x'):
-                    self.run = False
-                    break
-                elif key == ord(' '):
-                    cv2.imwrite("frame.png", frame)
-
-                yield frame
-        else:
-            yield cv2.imread("frame.png")
-
-def filter_red(app, img_rgb):
-    img_hsv = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2HSV)
+    
+    img_hsv = cv2.cvtColor(color.asarray(), cv2.COLOR_BGR2HSV)
     # imshow(np.hstack((img_hsv[:,:,0], img_hsv[:,:,1], img_hsv[:,:,2])), "HSV")
     # plt.clf()
     # plt.imshow(np.hstack((img_hsv[:,:,0], img_hsv[:,:,1], img_hsv[:,:,2])), cmap="nipy_spectral")
     # plt.colorbar()
     # plt.pause(0.01)
 
-    mask_fg = np.maximum(cv2.inRange(img_hsv, np.array([130,50,0]), np.array([180,255,255])),
-                      cv2.inRange(img_hsv, np.array([0  ,50,0]), np.array([30 ,255,255])))
+    mask_fg = np.maximum(cv2.inRange(img_hsv, np.array([160,50,0]), np.array([180,255,255])),
+                      cv2.inRange(img_hsv, np.array([0  ,50,0]), np.array([10 ,255,255])))
     mask_fg = cv2.morphologyEx(mask_fg, cv2.MORPH_OPEN, np.ones((10,10)))
     mask_bg = cv2.bitwise_not(mask_fg)
     mask_bg = cv2.morphologyEx(mask_bg, cv2.MORPH_ERODE, np.ones((100,100)))
     mask_fg = cv2.morphologyEx(mask_fg, cv2.MORPH_ERODE, np.ones((30,30)))
-    app.imshow(mask_fg, "Mask")
-    app.imshow(mask_bg, "Background Mask")
+
+    cv2.imshow("Mask", mask_fg)
+    cv2.imshow("Background Mask", mask_bg)
 
     markers = np.zeros(mask_fg.shape, dtype=np.int32)
     markers[mask_fg > 0] = 1
@@ -157,12 +119,16 @@ def filter_red(app, img_rgb):
 
     img_hsv = cv2.bitwise_and(img_hsv, img_hsv, mask=mask_red)
     img_rgb2 = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
-    return img_rgb2
 
-if __name__ == "__main__":
-    app = VideoStreamer(live=True)
+    cv2.imshow( "Filtered", img_rgb2)
 
-    for img_rgb in app.capture_video():
-        img_hsv = filter_red(app, img_rgb)
-        app.imshow(img_hsv, "Filtered")
+    listener.release(frames)
 
+    key = cv2.waitKey(delay=1)
+    if key == ord('q'):
+        break
+
+device.stop()
+device.close()
+
+sys.exit(0)

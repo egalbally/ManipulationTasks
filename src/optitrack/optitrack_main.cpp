@@ -23,7 +23,10 @@ static const std::string KEY_POS_RIGID_BODIES   = KEY_PREFIX + "pos_rigid_bodies
 static const std::string KEY_ORI_RIGID_BODIES   = KEY_PREFIX + "ori_rigid_bodies";
 static const std::string KEY_POS_SINGLE_MARKERS = KEY_PREFIX + "pos_single_markers";
 static const std::string KEY_ORI_EA_RIGID_BODIES   = KEY_PREFIX + "ori_rigid_bodies_ea";
+<<<<<<< HEAD
 static const std::string KEY_ORI_MAT_RIGID_BODY = KEY_PREFIX + "ori_rigid_body_mat";
+=======
+>>>>>>> vision
 
 
 int main(int argc, char** argv) {
@@ -114,9 +117,8 @@ int main(int argc, char** argv) {
 		}
 		for (int i = 0; i < optitrack.ori_rigid_bodies_.size(); i++) {
 			Eigen::Quaternionf ori = optitrack.ori_rigid_bodies_[i];
-			Eigen::Matrix3f mat = opti_rot * ori.toRotationMatrix() * opti_rot.transpose(); 
-			Eigen::Vector3f ea = /*opti_rot * */mat.eulerAngles(0, 1, 2); 
-			ori_mat_rigid_body = mat;
+			Eigen::Matrix3f mat = ori.toRotationMatrix(); 
+			Eigen::Vector3f ea = opti_rot * mat.eulerAngles(0, 1, 2); 
 			ori_rigid_bodies.row(i) << ori.x(), ori.y(), ori.z(), ori.w();
 			ori_ea_rigid_bodies.row(i) = ea.transpose();
 		}
