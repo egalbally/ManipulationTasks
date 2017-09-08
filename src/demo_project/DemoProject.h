@@ -35,6 +35,12 @@ const std::string KEY_KV_JOINT_INIT      = KukaIIWA::KEY_PREFIX + "tasks::kv_joi
 const std::string KEY_UI_FLAG            = KukaIIWA::KEY_PREFIX + "ui::flag";
 const std::string KEY_KP_SLIDING         = KukaIIWA::KEY_PREFIX + "tasks::kp_sliding";
 const std::string KEY_KP_BIAS            = KukaIIWA::KEY_PREFIX + "tasks::kp_bias";
+
+const std::string KEY_KP_POS_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kp_pos_free";
+const std::string KEY_KV_POS_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kv_pos_free";
+const std::string KEY_KP_ORI_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kp_ori_free";
+const std::string KEY_KV_ORI_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kv_ori_free";
+
 const std::string KEY_KP_ORIENTATION_EXP = KukaIIWA::KEY_PREFIX + "tasks::kp_ori_exp";
 const std::string KEY_KV_ORIENTATION_EXP = KukaIIWA::KEY_PREFIX + "tasks::kv_ori_exp";
 const std::string KEY_KI_ORIENTATION_EXP = KukaIIWA::KEY_PREFIX + "tasks::ki_ori_exp";
@@ -83,12 +89,15 @@ protected:
 	enum ControllerState {
 		REDIS_SYNCHRONIZATION,
 		JOINT_SPACE_INITIALIZATION,
+		ALIGN_FREE_SPACE,
+		STABILIZE_FREE_SPACE_TO_CONTACT,
 		ALIGN_BOTTLE_CAP,
 		CHECK_ALIGNMENT,
 		REWIND_BOTTLE_CAP,
 		STABILIZE_REWIND,
 		SCREW_BOTTLE_CAP,
-		CHECK_SCREW
+		CHECK_SCREW,
+		CHECK_FREE_SPACE_ALIGNMENT
 	};
 
 	// Return values from computeControlTorques() methods
@@ -103,6 +112,9 @@ protected:
 	const double kToleranceInitQ  = 0.5;  // Joint space initialization tolerance
 	const double kToleranceInitDq = 0.1;  // Joint space initialization tolerance
 	const double kMaxVelocity = 3;  // Maximum end effector velocity
+	const double kToleranceAlignX = 0.005;
+	const double kToleranceAlignDx = 0.001;
+	const double kSafetyDistance2Rim = 0.03;
 
 	const int kControlFreq = 1000;         // 1 kHz control loop
 	const int kInitializationPause = 1e6;  // 1ms pause before starting control loop
@@ -144,6 +156,8 @@ protected:
 	void writeRedisValues();
 	ControllerStatus computeJointSpaceControlTorques();
 	ControllerStatus computeOperationalSpaceControlTorques();
+	ControllerStatus alignInFreeSpace();
+	ControllerStatus stabilizeFreeSpace2Contact();
 	ControllerStatus alignBottleCap();
 	ControllerStatus alignBottleCapExponentialDamping();
 	ControllerStatus alignBottleCapSimple();
@@ -153,6 +167,7 @@ protected:
 	ControllerStatus rewindBottleCap();
 	ControllerStatus stabilizeRewind();
 	ControllerStatus checkScrew();
+	ControllerStatus checkFreeSpaceAlignment();
 
 	Eigen::Vector3d estimatePivotPoint();
 
@@ -208,8 +223,12 @@ protected:
 	double kp_screw_ = 15;
 	double kv_screw_ = 4;
 	double kp_sliding_ = 1.5;
-	// double kp_bias_ = 1.2; 
-	double kp_bias_ = 0.0; 
+	double kp_bias_ = 0.0; //1.2
+	double kp_pos_free_ = 10;
+	double kv_pos_free_ = 5;
+	double kp_ori_free_ = 10;
+	double kv_ori_free_ = 5;
+
 
 	// gains for exponential damping during alignment
 	double exp_moreSpeed = 2; 

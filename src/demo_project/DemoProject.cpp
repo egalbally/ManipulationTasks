@@ -37,6 +37,12 @@ void DemoProject::readRedisValues() {
 	kv_screw_ = stod(redis_.get(KEY_KV_SCREW));
 	kp_sliding_ = stod(redis_.get(KEY_KP_SLIDING));
 	kp_bias_ = stod(redis_.get(KEY_KP_BIAS));
+
+	kp_pos_free_ = stod(redis_.get(KEY_KP_POS_FREE));
+	kv_pos_free_ = stod(redis_.get(KEY_KV_POS_FREE));
+	kp_ori_free_ = stod(redis_.get(KEY_KP_ORI_FREE));
+	kv_ori_free_ = stod(redis_.get(KEY_KV_ORI_FREE));
+
 	exp_moreSpeed = stod(redis_.get(KEY_MORE_SPEED));
 	exp_lessDamping = stod(redis_.get(KEY_LESS_DAMPING));
 	kp_ori_exp = stod(redis_.get(KEY_KP_ORIENTATION_EXP));
@@ -211,6 +217,122 @@ DemoProject::ControllerStatus DemoProject::computeJointSpaceControlTorques() {
 	// Compute torques
 	Eigen::VectorXd ddq = -kv_joint_init_ * dq_err;
 	command_torques_ = robot->_M * ddq;
+	return RUNNING;
+}
+
+/**
+ * DemoProject::alignInFreeSpace()
+ * ----------------------------------------------------
+ * Controller to match the orientation of the cap to the rim of the bottle
+ */
+DemoProject::ControllerStatus DemoProject::alignInFreeSpace() {
+
+	// Position - set xdes to be 3cm above the position of the rim
+	Eigen::Vector3d x_offset2Rim; // given desired offset in base frame
+	Eigen::Vector3d x_des_ee;
+	x_des_ee = x_ + x_offset2Rim;
+	x_des_ee(2) += -kSafetyDistance2Rim;
+
+	robot->position(x_des_, "link6", x_des_ee);
+	Eigen::Vector3d x_err = x_ - x_des_;
+	Eigen::Vector3d ddx = -kp_pos_free_ * x_err - kv_pos_free_ * dx_;
+
+	// Orientation
+	Eigen::Vector3d dPhi;
+	const Eigen::MatrixXd desired_orientation = Eigen::MatrixXd::Identity(3,3);
+	const Eigen::Matrix3d& current_orientation = R_ee_to_base_;
+	robot->orientationError(dPhi, desired_orientation, current_orientation);
+	Eigen::Vector3d dw = -kp_ori_free_ * dPhi - kv_ori_free_ * w_;
+
+	// Nullspace damping	
+	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
+	Eigen::VectorXd F_joint = robot->_M * ddq; 
+
+	// Command torques
+	Eigen::VectorXd ddxdw(6);
+	ddxdw << ddx, dw;
+	Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
+	command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
+
+	// Finish if the robot has converged to desired position
+	if (x_err.norm() < kToleranceAlignX && dx_.norm() < kToleranceAlignDx) {
+		return FINISHED;
+	}
+
+	return RUNNING;
+}
+
+/**
+ * DemoProject::stabilizeFreeSpace2Contact()
+ * ----------------------------------------------------
+ * Controller to move down until the cap is slightly below rim by applying an open loop force
+ * while maintaining orientation
+ */
+DemoProject::ControllerStatus DemoProject::stabilizeFreeSpace2Contact() {
+
+	Eigen::Vector3d x_des_ee;
+	x_des_ee = Eigen::Vector3d(0,0,kSafetyDistance2Rim);
+	robot->position(x_des_, "link6", x_des_ee);
+	Eigen::Vector3d x_err = x_ - x_des_;
+	Eigen::Vector3d dx_err = dx_ - dx_des_;
+	Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
+
+	// Orientation
+	Eigen::Vector3d dPhi;
+	const Eigen::MatrixXd desired_orientation = Eigen::MatrixXd::Identity(3,3);
+	const Eigen::Matrix3d& current_orientation = R_ee_to_base_;
+	robot->orientationError(dPhi, desired_orientation, current_orientation);
+	Eigen::Vector3d dw = -kp_ori_free_ * dPhi - kv_ori_free_ * w_;
+
+	// Nullspace damping	
+	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
+	Eigen::VectorXd F_joint = robot->_M * ddq; 
+
+	// Position-orientation combined
+	Eigen::VectorXd ddxdw(6);
+	ddxdw << ddx, dw;
+	Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
+	command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
+
+	// Finish if linear and angular velocity are zero
+	if ((dx_.norm() <= 0.1) && (w_.norm() < 0.01)) return FINISHED;
+
+	return RUNNING;
+}
+
+/**
+ * DemoProject::checkFreeSpaceAlignment()
+ * ----------------------------------------------------
+ * Check if cap and rim are aligned by checking if applying a horizontal force causes a non zero velocity of the cap
+ */
+DemoProject::ControllerStatus DemoProject::checkFreeSpaceAlignment() {
+
+	// Position control with velocity saturation
+	Eigen::Vector3d x_des_ee;
+	x_des_ee = Eigen::Vector3d(0.025,0,0); //this will generate a constant horizontal force
+	robot->position(x_des_, "link6", x_des_ee);
+	Eigen::Vector3d x_err = x_ - x_des_;
+	dx_des_ = -(kp_pos_ / kv_pos_) * x_err;
+	double v = kMaxVelocity / dx_des_.norm();
+	if (v > 1) v = 1;
+	Eigen::Vector3d dx_err = dx_ - v * dx_des_;
+	Eigen::Vector3d ddx = -kv_pos_ * dx_err;
+
+	// Nullspace posture control and damping
+	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
+
+	// Control torques
+	Eigen::Vector3d F_x = Lambda_x_ * ddx;
+	Eigen::VectorXd F_joint = robot->_M * ddq; 
+	command_torques_ = Jv_.transpose() * F_x + N_cap_.transpose() * F_joint;
+
+	// Failed if the applied horizontal force caused a lateral displacement
+	if (dx_.norm() > 0.05){
+		return FAILED;
+	}else{
+		return FINISHED;
+	}
+
 	return RUNNING;
 }
 
@@ -685,16 +807,45 @@ void DemoProject::runLoop() {
 			// Initialize robot to default joint configuration - joint space
 			case JOINT_SPACE_INITIALIZATION:
 				if (computeJointSpaceControlTorques() == FINISHED) {
-					cout << "ALIGN- Joint position initialized. Switching to align bottle cap." << endl;
-					controller_state_ = DemoProject::ALIGN_BOTTLE_CAP;
+					cout << "ALIGN FREE SPACE- Joint position initialized. Switching to align bottle cap." << endl;
+					controller_state_ = DemoProject::ALIGN_FREE_SPACE; //ALIGN_BOTTLE_CAP
 				}
 				break;
 			
-			// Screw cap
+			/***********   FREE SPACE   *************/
+			case ALIGN_FREE_SPACE:
+				if(alignInFreeSpace() == FINISHED){
+					cout<< "FREE 2 CONTACT "<< std::endl;
+					controller_state_ = DemoProject::STABILIZE_FREE_SPACE_TO_CONTACT;
+				}break;
+
+			case STABILIZE_FREE_SPACE_TO_CONTACT:
+				if(alignInFreeSpace() == FINISHED){
+					cout<< "CHECK ALIGN "<< std::endl;
+					controller_state_ = DemoProject::CHECK_FREE_SPACE_ALIGNMENT;
+				}break;
+
+
+			case CHECK_FREE_SPACE_ALIGNMENT:
+				switch (checkAlignment()) {
+					case FINISHED:
+						cout << "ALIGN IN CONTACT- Bottle cap aligned. Switching to rewind cap." << endl;
+						controller_state_ = ALIGN_BOTTLE_CAP;
+						break;
+					case FAILED:
+						cout << "ALIGN FREE SPACE- Bottle cap not aligned. Switching back to align bottle cap." << endl;
+						controller_state_ = ALIGN_FREE_SPACE;
+						break;
+					default:
+						break;
+				}
+				break;
+
+			/************   CONTACT   **************/
 			case ALIGN_BOTTLE_CAP:
 				if (alignBottleCapForce() == FINISHED) {  //alignBottleCapExponentialDamping //alignBottleCap //alignBottleCapSimple
-					cout << "CHECK- Bottle cap aligned. Switching to check alignment." << endl;
-					controller_state_ = CHECK_ALIGNMENT;
+					cout << "CHECK ALIGN" << endl;
+					controller_state_ = CHECK_FREE_SPACE_ALIGNMENT;
 					t_alignment_ = timer_.elapsedTime();
 				}
 				break;
@@ -706,14 +857,14 @@ void DemoProject::runLoop() {
 						controller_state_ = REWIND_BOTTLE_CAP;//REWIND_BOTTLE_CAP;//ALIGN_BOTTLE_CAP;
 						break;
 					case FAILED:
-						cout << "ALIGN- Bottle cap not aligned. Switching back to align bottle cap." << endl;
+						cout << "ALIGN IN CONTACT- Bottle cap not aligned. Switching back to align bottle cap." << endl;
 						controller_state_ = ALIGN_BOTTLE_CAP;
 						break;
 					default:
 						break;
 				}
 				break;
-			
+
 			case REWIND_BOTTLE_CAP:
 				if (rewindBottleCap() == FINISHED) {
 					cout << "STABILIZE- Bottle cap rewound. Switching to screw bottle cap." << endl;
