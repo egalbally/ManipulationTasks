@@ -40,6 +40,7 @@ const std::string KEY_KP_POS_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kp_pos
 const std::string KEY_KV_POS_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kv_pos_free";
 const std::string KEY_KP_ORI_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kp_ori_free";
 const std::string KEY_KV_ORI_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kv_ori_free";
+const std::string KEY_KV_JOINT_FREE      = KukaIIWA::KEY_PREFIX + "tasks::kv_joint_free";
 
 const std::string KEY_KP_ORIENTATION_EXP = KukaIIWA::KEY_PREFIX + "tasks::kp_ori_exp";
 const std::string KEY_KV_ORIENTATION_EXP = KukaIIWA::KEY_PREFIX + "tasks::kv_ori_exp";
@@ -90,7 +91,7 @@ protected:
 		REDIS_SYNCHRONIZATION,
 		JOINT_SPACE_INITIALIZATION,
 		ALIGN_FREE_SPACE,
-		STABILIZE_FREE_SPACE_TO_CONTACT,
+		FREE_SPACE_TO_CONTACT,
 		ALIGN_BOTTLE_CAP,
 		CHECK_ALIGNMENT,
 		REWIND_BOTTLE_CAP,
@@ -132,7 +133,8 @@ protected:
 	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,0.035,0.12);
 	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,-0.035,0.12);
 	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0.035,0,0.12);
-	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(-0.035,0,0.12);
+	// const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(-0.035,0,0.12);
+	const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,0,0.12);
 
 	// Small bottle 
 	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,0.02,0.135);
@@ -144,7 +146,7 @@ protected:
 	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,0.0575,0.12);
 	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0,-0.0575,0.12);
 	//const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(0.0575,0,0.12);
-	const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(-0.0575,0,0.12);
+	// const Eigen::Vector3d kPosEndEffector = Eigen::Vector3d(-0.0575,0,0.12);
 
 
 
@@ -157,7 +159,7 @@ protected:
 	ControllerStatus computeJointSpaceControlTorques();
 	ControllerStatus computeOperationalSpaceControlTorques();
 	ControllerStatus alignInFreeSpace();
-	ControllerStatus stabilizeFreeSpace2Contact();
+	ControllerStatus freeSpace2Contact();
 	ControllerStatus alignBottleCap();
 	ControllerStatus alignBottleCapExponentialDamping();
 	ControllerStatus alignBottleCapSimple();
@@ -201,7 +203,7 @@ protected:
 	Eigen::Vector3d x_, dx_, w_;
 	Eigen::Vector3d F_sensor_, M_sensor_, F_x_ee_;
 	ButterworthFilter F_sensor_6d_filter_;
-	Eigen::Matrix3d R_ee_to_base_;
+	Eigen::Matrix3d R_ee_to_base_, R_des_;
 
 	std::vector<Eigen::Vector3d> vec_dPhi_ = std::vector<Eigen::Vector3d>(kIntegraldPhiWindow);
 	int idx_vec_dPhi_ = 0;
@@ -224,11 +226,11 @@ protected:
 	double kv_screw_ = 4;
 	double kp_sliding_ = 1.5;
 	double kp_bias_ = 0.0; //1.2
-	double kp_pos_free_ = 10;
+	double kp_pos_free_ = 5;
 	double kv_pos_free_ = 5;
-	double kp_ori_free_ = 10;
-	double kv_ori_free_ = 5;
-
+	double kp_ori_free_ = 5;
+ 	double kv_ori_free_ = 5;
+	double kv_joint_free_ = 5;
 
 	// gains for exponential damping during alignment
 	double exp_moreSpeed = 2; 

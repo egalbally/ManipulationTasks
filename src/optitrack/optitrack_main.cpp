@@ -23,10 +23,7 @@ static const std::string KEY_POS_RIGID_BODIES   = KEY_PREFIX + "pos_rigid_bodies
 static const std::string KEY_ORI_RIGID_BODIES   = KEY_PREFIX + "ori_rigid_bodies";
 static const std::string KEY_POS_SINGLE_MARKERS = KEY_PREFIX + "pos_single_markers";
 static const std::string KEY_ORI_EA_RIGID_BODIES   = KEY_PREFIX + "ori_rigid_bodies_ea";
-<<<<<<< HEAD
 static const std::string KEY_ORI_MAT_RIGID_BODY = KEY_PREFIX + "ori_rigid_body_mat";
-=======
->>>>>>> vision
 
 
 int main(int argc, char** argv) {
