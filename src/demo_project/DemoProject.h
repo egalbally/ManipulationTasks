@@ -22,39 +22,39 @@
 const std::string KEY_EE_POS             = KukaIIWA::KEY_PREFIX + "tasks::ee_pos";
 const std::string KEY_EE_POS_DES         = KukaIIWA::KEY_PREFIX + "tasks::ee_pos_des";
 // - read:
-const std::string KEY_KP_POSITION        = KukaIIWA::KEY_PREFIX + "tasks::kp_pos";
-const std::string KEY_KV_POSITION        = KukaIIWA::KEY_PREFIX + "tasks::kv_pos";
-const std::string KEY_KP_ORIENTATION     = KukaIIWA::KEY_PREFIX + "tasks::kp_ori";
-const std::string KEY_KV_ORIENTATION     = KukaIIWA::KEY_PREFIX + "tasks::kv_ori";
-const std::string KEY_KP_JOINT           = KukaIIWA::KEY_PREFIX + "tasks::kp_joint";
-const std::string KEY_KV_JOINT           = KukaIIWA::KEY_PREFIX + "tasks::kv_joint";
-const std::string KEY_KP_SCREW           = KukaIIWA::KEY_PREFIX + "tasks::kp_screw";
-const std::string KEY_KV_SCREW           = KukaIIWA::KEY_PREFIX + "tasks::kv_screw";
-const std::string KEY_KP_JOINT_INIT      = KukaIIWA::KEY_PREFIX + "tasks::kp_joint_init";
-const std::string KEY_KV_JOINT_INIT      = KukaIIWA::KEY_PREFIX + "tasks::kv_joint_init";
 const std::string KEY_UI_FLAG            = KukaIIWA::KEY_PREFIX + "ui::flag";
-const std::string KEY_KP_SLIDING         = KukaIIWA::KEY_PREFIX + "tasks::kp_sliding";
-const std::string KEY_KP_BIAS            = KukaIIWA::KEY_PREFIX + "tasks::kp_bias";
 
-const std::string KEY_KP_POS_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kp_pos_free";
-const std::string KEY_KV_POS_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kv_pos_free";
-const std::string KEY_KP_ORI_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kp_ori_free";
-const std::string KEY_KV_ORI_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kv_ori_free";
-const std::string KEY_KV_JOINT_FREE      = KukaIIWA::KEY_PREFIX + "tasks::kv_joint_free";
+// const std::string KEY_KP_POSITION        = KukaIIWA::KEY_PREFIX + "tasks::kp_pos";
+// const std::string KEY_KV_POSITION        = KukaIIWA::KEY_PREFIX + "tasks::kv_pos";
+// const std::string KEY_KP_ORIENTATION     = KukaIIWA::KEY_PREFIX + "tasks::kp_ori";
+// const std::string KEY_KV_ORIENTATION     = KukaIIWA::KEY_PREFIX + "tasks::kv_ori";
+// const std::string KEY_KP_JOINT           = KukaIIWA::KEY_PREFIX + "tasks::kp_joint";
+// const std::string KEY_KV_JOINT           = KukaIIWA::KEY_PREFIX + "tasks::kv_joint";
+// const std::string KEY_KP_SCREW           = KukaIIWA::KEY_PREFIX + "tasks::kp_screw";
+// const std::string KEY_KV_SCREW           = KukaIIWA::KEY_PREFIX + "tasks::kv_screw";
+// const std::string KEY_KP_JOINT_INIT      = KukaIIWA::KEY_PREFIX + "tasks::kp_joint_init";
+// const std::string KEY_KV_JOINT_INIT      = KukaIIWA::KEY_PREFIX + "tasks::kv_joint_init";
+// const std::string KEY_KP_SLIDING         = KukaIIWA::KEY_PREFIX + "tasks::kp_sliding";
+// const std::string KEY_KP_BIAS            = KukaIIWA::KEY_PREFIX + "tasks::kp_bias";
 
-const std::string KEY_KP_ORIENTATION_EXP = KukaIIWA::KEY_PREFIX + "tasks::kp_ori_exp";
-const std::string KEY_KV_ORIENTATION_EXP = KukaIIWA::KEY_PREFIX + "tasks::kv_ori_exp";
-const std::string KEY_KI_ORIENTATION_EXP = KukaIIWA::KEY_PREFIX + "tasks::ki_ori_exp";
-const std::string KEY_KP_POSITION_EXP    = KukaIIWA::KEY_PREFIX + "tasks::kp_pos_exp";
-const std::string KEY_MORE_SPEED         = KukaIIWA::KEY_PREFIX + "tasks::more_speed";
-const std::string KEY_LESS_DAMPING       = KukaIIWA::KEY_PREFIX + "tasks::less_damping";
-const std::string THETA                  = KukaIIWA::KEY_PREFIX + "sensor::theta";
-const std::string KEY_KP_FORCE           = KukaIIWA::KEY_PREFIX + "tasks::kp_force";
-const std::string KEY_KV_FORCE           = KukaIIWA::KEY_PREFIX + "tasks::kv_force";
-const std::string KEY_KI_FORCE           = KukaIIWA::KEY_PREFIX + "tasks::ki_force";
-const std::string KEY_KP_MOMENT          = KukaIIWA::KEY_PREFIX + "tasks::kp_moment";
-const std::string KEY_KV_MOMENT          = KukaIIWA::KEY_PREFIX + "tasks::kv_moment";
-const std::string KEY_KI_MOMENT          = KukaIIWA::KEY_PREFIX + "tasks::ki_moment";
+// const std::string KEY_KP_POS_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kp_pos_free";
+// const std::string KEY_KV_POS_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kv_pos_free";
+// const std::string KEY_KP_ORI_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kp_ori_free";
+// const std::string KEY_KV_ORI_FREE        = KukaIIWA::KEY_PREFIX + "tasks::kv_ori_free";
+// const std::string KEY_KV_JOINT_FREE      = KukaIIWA::KEY_PREFIX + "tasks::kv_joint_free";
+
+// const std::string KEY_KP_ORIENTATION_EXP = KukaIIWA::KEY_PREFIX + "tasks::kp_ori_exp";
+// const std::string KEY_KV_ORIENTATION_EXP = KukaIIWA::KEY_PREFIX + "tasks::kv_ori_exp";
+// const std::string KEY_KI_ORIENTATION_EXP = KukaIIWA::KEY_PREFIX + "tasks::ki_ori_exp";
+// const std::string KEY_KP_POSITION_EXP    = KukaIIWA::KEY_PREFIX + "tasks::kp_pos_exp";
+// const std::string KEY_MORE_SPEED         = KukaIIWA::KEY_PREFIX + "tasks::more_speed";
+// const std::string KEY_LESS_DAMPING       = KukaIIWA::KEY_PREFIX + "tasks::less_damping";
+// const std::string KEY_KP_FORCE           = KukaIIWA::KEY_PREFIX + "tasks::kp_force";
+// const std::string KEY_KV_FORCE           = KukaIIWA::KEY_PREFIX + "tasks::kv_force";
+// const std::string KEY_KI_FORCE           = KukaIIWA::KEY_PREFIX + "tasks::ki_force";
+// const std::string KEY_KP_MOMENT          = KukaIIWA::KEY_PREFIX + "tasks::kp_moment";
+// const std::string KEY_KV_MOMENT          = KukaIIWA::KEY_PREFIX + "tasks::kv_moment";
+// const std::string KEY_KI_MOMENT          = KukaIIWA::KEY_PREFIX + "tasks::ki_moment";
 
 class DemoProject {
 
@@ -214,40 +214,76 @@ protected:
 	Eigen::Vector3d op_point_ = kPosEndEffector;
 
 	// Default gains (used only when keys are nonexistent in Redis)
-	double kp_pos_ = 15;
-	double kv_pos_ = 0;
-	double kp_ori_ = 4;
-	double kv_ori_ = 0.5;
-	double kp_joint_init_ = 10;
-	double kv_joint_init_ = 4;
-	double kp_joint_ = 15; 
-	double kv_joint_ = 0;
-	double kp_screw_ = 15;
-	double kv_screw_ = 4;
-	double kp_sliding_ = 1.5;
-	double kp_bias_ = 0.0; //1.2
-	double kp_pos_free_ = 5;
-	double kv_pos_free_ = 5;
-	double kp_ori_free_ = 5;
- 	double kv_ori_free_ = 5;
-	double kv_joint_free_ = 5;
+	std::map<std::string, double> K = {
+		{"kp_joint_init", 10},
+		{"kv_joint_init", 4 },
 
-	// gains for exponential damping during alignment
-	double exp_moreSpeed = 2; 
-	double exp_lessDamping = 2;
-	double kp_ori_exp = 15;
-	double kv_ori_exp = 20; 
-	double ki_ori_exp = 1.5;
-	double kp_pos_exp = 30;	
-	double kp_force = 0.5;
-	double kv_force = 0;
-	double ki_force = 1;
-	double kp_moment = 2; //3 (for small and medium)
-	double kv_moment = 0;
-	double ki_moment = 1;
+		{"kp_pos",    15},
+		{"kv_pos",     0},
+		{"kp_ori",     4},
+		{"kv_ori",   0.5},
+		{"kp_joint",  15},
+		{"kv_joint",   0},
+		{"kp_screw",  15},
+		{"kv_screw",   4},
 
-	// angle between contact surface normal and cap normal
-	double theta;
+		{"kp_sliding", 1.5},
+		{"kp_bias",      0}, // 1.2
+
+		{"kp_pos_free",   5},
+		{"kv_pos_free",   5},
+		{"kp_ori_free",   5},
+		{"kv_ori_free",   5},
+		{"kv_joint_free", 5},
+
+		{"kp_ori_exp",  15},
+		{"kv_ori_exp",  20},
+		{"ki_ori_exp", 1.5},
+		{"kp_pos_exp",  30},
+		{"more_speed",   2},
+		{"less_damping", 2},
+
+		{"kp_force", 0.5},
+		{"kv_force",   0},
+		{"ki_force",   1},
+		{"kp_moment",  2}, //3 (for small and medium)
+		{"kv_moment",  0},
+		{"ki_moment",  1}
+	};
+	// double kp_pos_ = 15;
+	// double kv_pos_ = 0;
+	// double kp_ori_ = 4;
+	// double kv_ori_ = 0.5;
+	// double kp_joint_init_ = 10;
+	// double kv_joint_init_ = 4;
+	// double kp_joint_ = 15;
+	// double kv_joint_ = 0;
+	// double kp_screw_ = 15;
+	// double kv_screw_ = 4;
+	// // double kp_sliding_ = 1.5;
+	// // double kp_bias_ = 0.0; //1.2
+	// double kp_pos_free_ = 5;
+	// double kv_pos_free_ = 5;
+	// double kp_ori_free_ = 5;
+    //  double kv_ori_free_ = 5;
+	// double kv_joint_free_ = 5;
+
+	// // gains for exponential damping during alignment
+	// // double exp_moreSpeed_ = 2;
+	// // double exp_lessDamping_ = 2;
+	// // double kp_ori_exp_ = 15;
+	// // double kv_ori_exp_ = 20;
+	// // double ki_ori_exp_ = 1.5;
+	// // double kp_pos_exp_ = 30;
+	// // double kp_force_ = 0.5;
+	// // double kv_force_ = 0;
+	// // double ki_force_ = 1;
+	// // double kp_moment_ = 2; //3 (for small and medium)
+	// // double kv_moment_ = 0;
+	// // double ki_moment_ = 1;
+
+	// // angle between contact surface normal and cap normal
+	// // double theta_;
 };
 
 #endif  // DEMO_PROJECT_H

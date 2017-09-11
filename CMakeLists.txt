@@ -11,7 +11,6 @@ include_directories(/usr/include /usr/local/include)
 set(CS225A_COMMON_SOURCE
 	${PROJECT_SOURCE_DIR}/src/redis/RedisClient.cpp
 	${PROJECT_SOURCE_DIR}/src/timer/LoopTimer.cpp
-	${PROJECT_SOURCE_DIR}/src/optitrack/OptiTrackClient.cpp
 )
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
@@ -36,10 +35,10 @@ elseif(CMAKE_SYSTEM_NAME MATCHES Linux)
 endif()
 
 # - natnetlinux
-find_package(Boost REQUIRED COMPONENTS system thread)
-include_directories(${Boost_INCLUDE_DIRS})
-link_libraries(${Boost_LIBRARIES})
-include_directories(${PROJECT_SOURCE_DIR}/external/NatNetLinux.git/include)
+# find_package(Boost REQUIRED COMPONENTS system thread)
+# include_directories(${Boost_INCLUDE_DIRS})
+# link_libraries(${Boost_LIBRARIES})
+# include_directories(${PROJECT_SOURCE_DIR}/external/NatNetLinux.git/include)
 
 set(CS225A_COMMON_LIBRARIES
 	${SAI2-COMMON_LIBRARIES}
@@ -63,9 +62,9 @@ add_subdirectory(src/simulation)
 # add_subdirectory(src/hw3)
 add_subdirectory(src/demo_project)
 
-add_subdirectory(src/optitrack)
+# add_subdirectory(src/optitrack)
 add_subdirectory(src/optoforce)
-add_subdirectory(src/schunk_gripper)
+# add_subdirectory(src/schunk_gripper)
 add_subdirectory(src/kuka_iiwa)
 # add_subdirectory(src/kinova_jaco)
 # add_subdirectory(src/sawyer)
