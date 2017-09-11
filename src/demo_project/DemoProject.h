@@ -112,7 +112,9 @@ protected:
 
 	const double kToleranceInitQ  = 0.5;  // Joint space initialization tolerance
 	const double kToleranceInitDq = 0.1;  // Joint space initialization tolerance
-	const double kMaxVelocity = 3;  // Maximum end effector velocity
+	const double kMaxVelocity = 0.1;  // Maximum end effector velocity
+	const double kMaxVelocityScrew = 3; // 3 radians per second
+	const double kMaxVelocityInit = 1; // 1 radian per second
 	const double kToleranceAlignX = 0.005;
 	const double kToleranceAlignDx = 0.001;
 	const double kSafetyDistance2Rim = 0.03;
@@ -216,7 +218,7 @@ protected:
 	// Default gains (used only when keys are nonexistent in Redis)
 	std::map<std::string, double> K = {
 		{"kp_joint_init", 10},
-		{"kv_joint_init", 4 },
+		{"kv_joint_init", 5},
 
 		{"kp_pos",    15},
 		{"kv_pos",     0},
@@ -230,8 +232,8 @@ protected:
 		{"kp_sliding", 1.5},
 		{"kp_bias",      0}, // 1.2
 
-		{"kp_pos_free",   5},
-		{"kv_pos_free",   5},
+		{"kp_pos_free",   30},
+		{"kv_pos_free",   10},
 		{"kp_ori_free",   5},
 		{"kv_ori_free",   5},
 		{"kv_joint_free", 5},

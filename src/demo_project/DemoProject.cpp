@@ -195,7 +195,7 @@ DemoProject::ControllerStatus DemoProject::computeJointSpaceControlTorques() {
 	// Joint space velocity saturation
 	Eigen::VectorXd q_err = robot->_q - q_des_;
 	dq_des_ = -(K["kp_joint_init"] / K["kv_joint_init"]) * q_err;
-	double v = kMaxVelocity / dq_des_.norm();
+	double v = kMaxVelocityInit / dq_des_.norm();
 	if (v > 1) v = 1;
 	Eigen::VectorXd dq_err = robot->_dq - v * dq_des_;
 
@@ -225,7 +225,13 @@ DemoProject::ControllerStatus DemoProject::alignInFreeSpace() {
 
 	// robot->position(x_des_, "link6", x_des_ee);
 	Eigen::Vector3d x_err = x_ - x_des_;
-	Eigen::Vector3d ddx = -K["kp_pos_free"] * x_err - K["kv_pos_free"] * dx_;
+
+	// Velocity saturation
+	dx_des_ = -K["kp_pos_free"]/ K["kv_pos_free"] * x_err;
+	double v = kMaxVelocity / dx_des_.norm();
+	if (v > 1) v = 1;
+	Eigen::Vector3d dx_err = dx_ - v * dx_des_;
+	Eigen::Vector3d ddx = - K["kv_pos_free"] * dx_err;
 
 	// Orientation
 	Eigen::Vector3d dPhi;
@@ -246,7 +252,7 @@ DemoProject::ControllerStatus DemoProject::alignInFreeSpace() {
 	command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
 
 	// Finish if the robot has converged to desired position
-	if (x_err.norm() < kToleranceAlignX && dx_.norm() < kToleranceAlignDx) {
+	if (x_err.norm() < 0.01 && dx_.norm() < kToleranceAlignDx) {
 		return FINISHED;
 	}
 
@@ -513,7 +519,7 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
 
 	// Force and moment error
 	Eigen::Vector3d sliding_vector = Eigen::Vector3d(0, 0, 1).cross(M_sensor_);
-	Eigen::Vector3d F_des_ee = Eigen::Vector3d(0, 0, 10.0) + K["kp_sliding"] * sliding_vector;
+	Eigen::Vector3d F_des_ee = Eigen::Vector3d(0, 0, 15.0) + K["kp_sliding"] * sliding_vector;
 	Eigen::Vector3d F_des = R_ee_to_base_ * F_des_ee;
 	Eigen::Vector3d F_err = -R_ee_to_base_ * F_sensor_ - F_des;
 
@@ -608,7 +614,7 @@ DemoProject::ControllerStatus DemoProject::rewindBottleCap() {
 
 	//Joint space velocity saturation
 	double dq_screw_des = -(K["kp_screw"] / K["kv_screw"]) * q_screw_err;
-	double v = kMaxVelocity / abs(dq_screw_des);
+	double v = kMaxVelocityScrew / abs(dq_screw_des);
 	if (v > 1) v = 1;
 	double dq_screw_err = robot->_dq(6) - v * dq_screw_des;
 
@@ -639,7 +645,7 @@ DemoProject::ControllerStatus DemoProject::stabilizeRewind() {
 
 	//Joint space velocity saturation
 	double dq_screw_des = -(K["kp_screw"] / K["kv_screw"]) * q_screw_err;
-	double v = kMaxVelocity / abs(dq_screw_des);
+	double v = kMaxVelocityScrew / abs(dq_screw_des);
 	if (v > 1) v = 1;
 	double dq_screw_err = robot->_dq(6) - v * dq_screw_des;
 
@@ -674,7 +680,7 @@ DemoProject::ControllerStatus DemoProject::screwBottleCap() {
 
 	//Joint space velocity saturation
 	double dq_screw_des = -(K["kp_screw"] / K["kv_screw"]) * q_screw_err;
-	double v = kMaxVelocity / abs(dq_screw_des);
+	double v = kMaxVelocityScrew / abs(dq_screw_des);
 	if (v > 1) v = 1;
 	double dq_screw_err = robot->_dq(6) - v * dq_screw_des;
 
@@ -712,7 +718,7 @@ DemoProject::ControllerStatus DemoProject::checkScrew() {
 
 	//Joint space velocity saturation
 	double dq_screw_des = -(K["kp_screw"] / K["kv_screw"]) * q_screw_err;
-	double v = kMaxVelocity / abs(dq_screw_des);
+	double v = kMaxVelocityScrew / abs(dq_screw_des);
 	if (v > 1) v = 1;
 	double dq_screw_err = robot->_dq(6) - v * dq_screw_des;
 
@@ -760,7 +766,7 @@ void DemoProject::initialize() {
 	// redis_.set(KEY_KV_JOINT_INIT, to_string(kv_joint_init_));
 	// redis_.set(KEY_KP_SCREW, to_string(kp_screw_));
 	// redis_.set(KEY_KV_SCREW, to_string(kv_screw_));
-	// redis_.set(KEY_UI_FLAG, to_string(0));
+	redis_.set(KEY_UI_FLAG, to_string(0));
 	// // redis_.set(KEY_KP_SLIDING, to_string(kp_sliding_));
 	// // redis_.set(KEY_KP_BIAS, to_string(kp_bias_));
 
@@ -876,7 +882,7 @@ void DemoProject::runLoop() {
 			case ALIGN_BOTTLE_CAP:
 				if (alignBottleCapForce() == FINISHED) {  //alignBottleCapExponentialDamping //alignBottleCap //alignBottleCapSimple
 					cout << "CHECK ALIGN" << endl;
-					controller_state_ = CHECK_FREE_SPACE_ALIGNMENT;
+					controller_state_ = CHECK_ALIGNMENT;
 					t_alignment_ = timer_.elapsedTime();
 				}
 				break;
