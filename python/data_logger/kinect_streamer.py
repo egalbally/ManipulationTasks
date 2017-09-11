@@ -15,6 +15,7 @@ from pylibfreenect2 import LoggerLevel
 FPS = 30.0
 RES_COLOR = (1920, 1080)
 RES_DEPTH = (512, 424)
+SIZE_AVG_FILTER = 1
 
 class KinectStreamer:
 
@@ -52,8 +53,13 @@ class KinectStreamer:
 
         self.device.start()
 
+        self.registration = Registration(self.device.getIrCameraParams(),
+                                         self.device.getColorCameraParams())
+
         self.run_loop = True
         self.lock = threading.Lock()
+        self.img_buffer = np.zeros((RES_COLOR[1], RES_COLOR[0], 3, SIZE_AVG_FILTER))
+        self.idx_buffer = 0
 
         # Close on Ctrl-C
         def signal_handler(signal, frame):
@@ -61,6 +67,9 @@ class KinectStreamer:
         signal.signal(signal.SIGINT, signal_handler)
 
     def stream_thread(self):
+        undistorted = Frame(RES_DEPTH[0], RES_DEPTH[1], 4)
+        registered = Frame(RES_DEPTH[0], RES_DEPTH[1], 4)
+
         while self.run_loop:
             frames = self.listener.waitForNewFrame()
 
@@ -68,11 +77,31 @@ class KinectStreamer:
             ir = frames["ir"]
             depth = frames["depth"]
 
+            self.registration.apply(color, depth, undistorted, registered)
+
             img_ir = ir.asarray() / 65535.
             self.lock.acquire()
             self.img_depth = (depth.asarray() / 4500. * 255).astype(np.uint8)
-            self.img_color = np.copy(color.asarray()[:,:,:3])
+            self.img_color = np.copy(color.asarray()[:,::-1,:3])
+            self.img_buffer[:,:,:,self.idx_buffer] = self.img_color
+            self.img_registered_color = np.copy(registered.asarray(np.uint8))
+            self.img_registered_depth = np.copy(undistorted.asarray(np.uint8))
             self.lock.release()
+            self.idx_buffer += 1
+            if self.idx_buffer >= SIZE_AVG_FILTER:
+                self.idx_buffer = 0
+
+            cv2.imshow("Kinect Depth", self.img_depth)
+            cv2.imshow("Kinect Color", cv2.resize(self.img_color, (int(round(0.3*RES_COLOR[0])), int(round(0.3*RES_COLOR[1])))))
+            cv2.imshow("Kinect R Depth", self.img_registered_depth)
+            cv2.imshow("Kinect R Color", self.img_registered_color)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q') or key == ord('x'):
+                self.run_loop = False
+                break
+            elif key == ord(' '):
+                cv2.imwrite("frame.png", frame)
 
             self.listener.release(frames)
 
