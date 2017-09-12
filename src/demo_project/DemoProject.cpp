@@ -15,6 +15,29 @@ static inline bool isnan(const Eigen::MatrixBase<Derived>& x) {
 using namespace std;
 
 /**
+ * public DemoProject::initialize()
+ * --------------------------------
+ * Initialize timer and Redis client
+ */
+void DemoProject::initialize() {
+	// Create a loop timer
+	timer_.setLoopFrequency(kControlFreq);   // 1 KHz
+	timer_.setCtrlCHandler(stop);    // exit while loop on ctrl-c
+	timer_.initializeTimer(kInitializationPause); // 1 ms pause before starting loop
+
+	// Start redis client
+	redis_.connect();
+
+	// Set gains in Redis
+	for (const auto& key_val : K) {
+		redis_.set(KukaIIWA::KEY_PREFIX + "tasks::" + key_val.first, to_string(key_val.second));
+	}
+
+	// Set flag in Redis
+	redis_.set(KEY_UI_FLAG, to_string(controller_flag_));
+}
+
+/**
  * DemoProject::readRedisValues()
  * ------------------------------
  * Retrieve all read keys from Redis.
@@ -65,8 +88,14 @@ void DemoProject::writeRedisValues() {
 	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tasks::ee::dx", dx_);
 	redis_.setEigenMatrix(KukaIIWA::KEY_PREFIX + "tasks::ee::w", w_);
 
+	// Check command torques before sending them
+	if (isnan(command_torques_)) {
+		cout << "NaN command torques. Sending zero torques to robot." << endl;
+		command_torques_.setZero();
+	}
+
 	// Send torques
-	redis_.setEigenMatrix(KukaIIWA::KEY_COMMAND_TORQUES, command_torques_);
+	if (controller_flag_) redis_.setEigenMatrix(KukaIIWA::KEY_COMMAND_TORQUES, command_torques_);
 }
 
 /**
@@ -160,11 +189,11 @@ void DemoProject::updateModel() {
 }
 
 /**
- * DemoProject::computeJointSpaceControlTorques()
+ * DemoProject::initializeJointSpace()
  * ----------------------------------------------
  * Controller to initialize robot to desired joint position.
  */
-DemoProject::ControllerStatus DemoProject::computeJointSpaceControlTorques() {
+DemoProject::ControllerStatus DemoProject::initializeJointSpace() {
 	// Joint space velocity saturation
 	Eigen::VectorXd q_err = robot->_q - q_des_;
 	dq_des_ = -(K["kp_joint_init"] / K["kv_joint_init"]) * q_err;
@@ -182,6 +211,37 @@ DemoProject::ControllerStatus DemoProject::computeJointSpaceControlTorques() {
 	}
 
 	return RUNNING;
+}
+
+/**
+ * DemoProject::gotoBottleCap()
+ * ----------------------------------------------------
+ * Go to bottle cap location.
+ */
+DemoProject::ControllerStatus DemoProject::gotoBottleCap() {
+	return FINISHED;
+}
+
+/**
+ * DemoProject::grabBottleCap()
+ * ----------------------------------------------------
+ * Grab bottle cap.
+ */
+DemoProject::ControllerStatus DemoProject::grabBottleCap() {
+	gripper_pos_des_ = SchunkGripper::POSITION_MIN;
+	gotoBottleCap();
+
+	double t_curr = timer_.elapsedTime();
+	return (t_curr - t_init_ >= kGripperWait) ? FINISHED : STABILIZING;
+}
+
+/**
+ * DemoProject::gotoBottleViaPoint()
+ * ----------------------------------------------------
+ * Go to bottle via point before approaching for contact.
+ */
+DemoProject::ControllerStatus DemoProject::gotoBottleViaPoint() {
+	return FINISHED;
 }
 
 /**
@@ -266,46 +326,6 @@ DemoProject::ControllerStatus DemoProject::freeSpace2Contact() {
 
 	return RUNNING;
 }
-
-/**
- * DemoProject::checkFreeSpaceAlignment()
- * ----------------------------------------------------
- * Check if cap and rim are aligned by checking if applying a horizontal force causes a non zero velocity of the cap
- */
-// DemoProject::ControllerStatus DemoProject::checkFreeSpaceAlignment() {
-
-// 	// Position control with velocity saturation
-// 	Eigen::Vector3d x_des_ee;
-// 	x_des_ee = Eigen::Vector3d(0.025,0,0); //this will generate a constant horizontal force
-// 	robot->position(x_des_, "link6", x_des_ee);
-// 	Eigen::Vector3d x_err = x_ - x_des_;
-// 	dx_des_ = -(kp_pos_ / kv_pos_) * x_err;
-// 	double v = kMaxVelocity / dx_des_.norm();
-// 	if (v > 1) v = 1;
-// 	Eigen::Vector3d dx_err = dx_ - v * dx_des_;
-// 	Eigen::Vector3d ddx = -kv_pos_ * dx_err;
-
-// 	// Nullspace posture control and damping
-// 	Eigen::VectorXd ddq = -kv_joint_ * robot->_dq;
-
-// 	// Control torques
-// 	Eigen::Vector3d F_x = Lambda_x_ * ddx;
-// 	Eigen::VectorXd F_joint = robot->_M * ddq; 
-// 	command_torques_ = Jv_.transpose() * F_x + N_cap_.transpose() * F_joint;
-
-// 	double t_curr = timer_.elapsedTime();
-	
-
-// 	// Failed if the applied horizontal force caused a lateral displacement
-// 	std::cout << F_sensor_.norm() << std::endl;
-// 	if (F_sensor_.norm() < 1.0){
-// 		return RUNNING;
-// 	}// else if (t_curr - t_alignment_ >= kAlignmentWait) {
-// 	// 	return FAILED;
-// 	// }
-
-// 	return FINISHED;
-// }
 
 /**
  * DemoProject::computeOperationalSpaceControlTorques()
@@ -471,7 +491,7 @@ DemoProject::ControllerStatus DemoProject::freeSpace2Contact() {
 /**
  * DemoProject::alignBottleCapForce()
  * ----------------------------------------------------
- * Controller to move end effector to desired position.
+ * Align bottle cap using closed loop force control.
  */
 DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
 	static Eigen::Vector3d integral_F_err = Eigen::Vector3d::Zero();
@@ -537,7 +557,7 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
 /**
  * DemoProject::rewindBottleCap()
  * ----------------------------------------------------
- * Controller to move end effector to desired position.
+ * Rewind bottle cap.
  */
 DemoProject::ControllerStatus DemoProject::rewindBottleCap() {
 	// // Position - set xdes below the current position in z to apply a constant downward force
@@ -577,7 +597,7 @@ DemoProject::ControllerStatus DemoProject::rewindBottleCap() {
 /**
  * DemoProject::screwBottleCap()
  * ----------------------------------------------------
- * Controller to move end effector to desired position.
+ * Screw bottle cap. Go to rewind if no z-torques detected.
  */
 DemoProject::ControllerStatus DemoProject::screwBottleCap() {
 	// // Position - set xdes below the current position in z to apply a constant downward force
@@ -619,26 +639,14 @@ DemoProject::ControllerStatus DemoProject::screwBottleCap() {
 }
 
 /**
- * public DemoProject::initialize()
- * --------------------------------
- * Initialize timer and Redis client
+ * DemoProject::releaseBottleCap()
+ * ----------------------------------------------------
+ * Release bottle cap.
  */
-void DemoProject::initialize() {
-	// Create a loop timer
-	timer_.setLoopFrequency(kControlFreq);   // 1 KHz
-	timer_.setCtrlCHandler(stop);    // exit while loop on ctrl-c
-	timer_.initializeTimer(kInitializationPause); // 1 ms pause before starting loop
-
-	// Start redis client
-	redis_.connect();
-
-	// Set gains in Redis
-	for (const auto& key_val : K) {
-		redis_.set(KukaIIWA::KEY_PREFIX + "tasks::" + key_val.first, to_string(key_val.second));
-	}
-
-	// Set flag in Redis
-	redis_.set(KEY_UI_FLAG, to_string(controller_flag_));
+DemoProject::ControllerStatus DemoProject::releaseBottleCap() {
+	gripper_pos_des_ = SchunkGripper::POSITION_MIN;
+	double t_curr = timer_.elapsedTime();
+	return (t_curr - t_init_ >= kGripperWait) ? FINISHED : STABILIZING;
 }
 
 /**
@@ -650,7 +658,6 @@ void DemoProject::runLoop() {
 	while (g_runloop) {
 		// Wait for next scheduled loop (controller must run at precise rate)
 		timer_.waitForNextLoop();
-		++controller_counter_;
 
 		// Get latest sensor values from Redis and update robot model
 		try {
@@ -671,19 +678,44 @@ void DemoProject::runLoop() {
 			// Wait until valid sensor values have been published to Redis
 			case REDIS_SYNCHRONIZATION:
 				if (isnan(robot->_q) || !controller_flag_) continue;
-				cout << "INIT- Redis synchronized. Switching to joint space controller." << endl;
+				cout << "REDIS_SYNCHRONIZATION      => JOINT_SPACE_INITIALIZATION" << endl;
 				controller_state_ = JOINT_SPACE_INITIALIZATION;
 				break;
 
 			// Initialize robot to default joint configuration - joint space
 			case JOINT_SPACE_INITIALIZATION:
-				if (computeJointSpaceControlTorques() == FINISHED) {
-					cout << "ALIGN FREE SPACE- Joint position initialized. Switching to align bottle cap." << endl;
+				if (initializeJointSpace() == FINISHED) {
+					cout << "JOINT_SPACE_INITIALIZATION => ALIGN_FREE_SPACE" << endl;
 					controller_state_ = ALIGN_FREE_SPACE; //ALIGN_BOTTLE_CAP
 				}
 				break;
-			
-			/***********   FREE SPACE   *************/
+
+			/***********   GRAB BOTTLE CAP   *************/
+
+			case GOTO_BOTTLE_CAP:
+				if (gotoBottleCap() == FINISHED) {
+					cout << "GOTO_BOTTLE_CAP            => GRAB_BOTTLE_CAP" << endl;
+					controller_state_ = GRAB_BOTTLE_CAP;
+					t_init_ = timer_.elapsedTime();
+				}
+				break;
+
+			case GRAB_BOTTLE_CAP:
+				if (grabBottleCap() == FINISHED) {
+					cout << "GRAB_BOTTLE_CAP            => GOTO_BOTTLE_VIA_POINT" << endl;
+					controller_state_ = GOTO_BOTTLE_VIA_POINT;
+				}
+				break;
+
+			/***********   APPROACH BOTTLE   *************/
+
+			case GOTO_BOTTLE_VIA_POINT:
+				if (gotoBottleViaPoint() == FINISHED) {
+					cout << "GOTO_BOTTLE_VIA_POINT      => FREE_SPACE_TO_CONTACT" << endl;
+					controller_state_ = FREE_SPACE_TO_CONTACT;
+				}
+				break;
+
 			case ALIGN_FREE_SPACE:
 				if (alignInFreeSpace() == FINISHED) {
 					cout << "FREE 2 CONTACT" << endl;
@@ -693,23 +725,24 @@ void DemoProject::runLoop() {
 
 			case FREE_SPACE_TO_CONTACT:
 				if (freeSpace2Contact() == FINISHED) {
-					cout << "ALIGN BOTTLE CAP" << endl;
+					cout << "FREE_SPACE_TO_CONTACT      => ALIGN_BOTTLE_CAP" << endl;
 					controller_state_ = ALIGN_BOTTLE_CAP;
 				}
 				break;
 
-			/************   CONTACT   **************/
+			/************   CONTROL CONTACT   **************/
+
 			case ALIGN_BOTTLE_CAP:
 				if (alignBottleCapForce() == FINISHED) {  //alignBottleCapExponentialDamping //alignBottleCap //alignBottleCapSimple
 					op_point_ << 0, 0, 0.12;
-					cout << "REWIND- Bottle cap aligned. Switching to rewind cap." << endl;
+					cout << "ALIGN_BOTTLE_CAP           => REWIND_BOTTLE_CAP" << endl;
 					controller_state_ = REWIND_BOTTLE_CAP;
 				}
 				break;
-			
+
 			case REWIND_BOTTLE_CAP:
 				if (rewindBottleCap() == FINISHED) {
-					cout << "STABILIZE- Bottle cap rewound. Switching to screw bottle cap." << endl;
+					cout << "REWIND_BOTTLE_CAP          => SCREW_BOTTLE_CAP" << endl;
 					controller_state_ = SCREW_BOTTLE_CAP;
 				}
 				break;
@@ -717,14 +750,26 @@ void DemoProject::runLoop() {
 			case SCREW_BOTTLE_CAP:
 				switch (screwBottleCap()) {
 					case FINISHED:
-						cout << "FINISHED- Success!!!." << endl;
+						cout << "Success!! SCREW_BOTTLE_CAP => RELEASE_BOTTLE_CAP" << endl;
+						controller_state_ = RELEASE_BOTTLE_CAP;
+						t_init_ = timer_.elapsedTime();
 						break;
 					case FAILED:
-						cout << "REWIND- Fail. Switching back to rewind bottle cap." << endl;
+						cout << "Fail.     SCREW_BOTTLE_CAP => REWIND_BOTTLE_CAP" << endl;
 						controller_state_ = REWIND_BOTTLE_CAP;
 						break;
 					default:
 						break;
+				}
+				break;
+
+			/************   RELEASE BOTTLE   **************/
+
+			case RELEASE_BOTTLE_CAP:
+				if (releaseBottleCap() == FINISHED) {
+					cout << "RELEASE_BOTTLE_CAP         => JOINT SPACE INITIALIZATION" << endl;
+					controller_state_ = JOINT_SPACE_INITIALIZATION;
+					idx_bottle_++;
 				}
 				break;
 
@@ -734,12 +779,6 @@ void DemoProject::runLoop() {
 				g_runloop = false;
 				command_torques_.setZero();
 				break;
-		}
-
-		// Check command torques before sending them
-		if (isnan(command_torques_) || !controller_flag_) {
-			// cout << "NaN command torques. Sending zero torques to robot." << endl;
-			command_torques_.setZero();
 		}
 
 		// Send command torques

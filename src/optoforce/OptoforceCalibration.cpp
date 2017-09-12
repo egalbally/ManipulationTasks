@@ -33,7 +33,7 @@ static const string ee_link_name = "link6";
 
 // Constants
 static const double kPositionEpsilon = 0.1;
-static const double kVelocityEpsilon = 0.005;
+static const double kVelocityEpsilon = 0.0005;
 static const int kNumMeasurements = 500;
 static const double kMaxVelocity = 1.0;
 static const double kControlFreq = 1000;
@@ -258,9 +258,7 @@ int main() {
 				     << " M_bias: " << Mb.transpose() << endl
 				     << endl
 				     << " ||Fs - [z I] * [mg; Fb]||: " << (Fs_stack - z_I * mg_Fb).norm() << endl
-				     << " ||Ms - [-zx I] * [rmg; Mb]||: " << (Ms_stack - zx_I * rmg_Mb).norm() << endl
-				     << " Fs - [z I] * [mg; Fb]: " << (Fs_stack - z_I * mg_Fb).transpose() << endl
-				     << " Ms - [-zx I] * [rmg; Mb]: " << (Ms_stack - zx_I * rmg_Mb).transpose() << endl;
+				     << " ||Ms - [-zx I] * [rmg; Mb]||: " << (Ms_stack - zx_I * rmg_Mb).norm() << endl;
 
 				// Publish values to Redis
 				Eigen::VectorXd FM_bias(6);

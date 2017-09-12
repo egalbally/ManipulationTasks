@@ -2,9 +2,12 @@
 
 <tool name="calibration_compensation">
 	<inertial>
-		<origin xyz="0.0 0.0 0.02" />
+		<!--<origin xyz="0.0 0.0 0.02" />
 		<mass value="0.33" /><!-- small lid
 		<mass value="0.38" /><!-- small lid -->
 		<!-- <mass value="0.6" /> -->
+
+		<origin xyz="0.0 0.0 0.09" />
+		<mass value="1.97" /><!-- Schunk gripper -->
 	</inertial>
 </tool>

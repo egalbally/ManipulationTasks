@@ -14,8 +14,8 @@ import signal
 import sys
 
 # Redis key to monitor
-# REDIS_KEY = "sai2::optoforce_6d::force"
 REDIS_KEY = "sai2::optoforce_6d::force"
+# REDIS_KEY = "sai2::optoforce_6d::force_controller"
 # REDIS_KEY = "cs225a::kuka_iiwa::actuators::fgc"
 
 # Legend labels

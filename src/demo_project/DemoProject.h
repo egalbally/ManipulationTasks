@@ -7,6 +7,7 @@
 #include "kuka_iiwa/KukaIIWA.h"
 #include "optoforce/Optoforce.h"
 #include "filters/ButterworthFilter.h"
+#include "schunk_gripper/SchunkGripper.h"
 
 // Standard
 #include <string>
@@ -22,6 +23,14 @@
 // - read:
 const std::string KEY_UI_FLAG = KukaIIWA::KEY_PREFIX + "ui::flag";
 
+Eigen::Matrix3d Matrix3d(double m11, double m12, double m13,
+                         double m21, double m22, double m23,
+                         double m31, double m32, double m33) {
+	Eigen::Matrix3d M;
+	M << m11, m12, m13, m21, m22, m23, m31, m32, m33;
+	return M;
+}
+
 class DemoProject {
 
 public:
@@ -30,9 +39,9 @@ public:
 	: robot(robot),
 	  controller_state_(REDIS_SYNCHRONIZATION)
 	{
-		for (auto& dPhi : vec_dPhi_) {
-			dPhi.setZero();
-		}
+		// for (auto& dPhi : vec_dPhi_) {
+		// 	dPhi.setZero();
+		// }
 		R_des_ << 1,  0,  0,
 		          0, -1,  0,
 		          0,  0, -1;
@@ -59,15 +68,15 @@ protected:
 	enum ControllerState {
 		REDIS_SYNCHRONIZATION,
 		JOINT_SPACE_INITIALIZATION,
+		GOTO_BOTTLE_CAP,
+		GRAB_BOTTLE_CAP,
+		GOTO_BOTTLE_VIA_POINT,
 		ALIGN_FREE_SPACE,
 		FREE_SPACE_TO_CONTACT,
 		ALIGN_BOTTLE_CAP,
-		CHECK_ALIGNMENT,
 		REWIND_BOTTLE_CAP,
-		STABILIZE_REWIND,
 		SCREW_BOTTLE_CAP,
-		CHECK_SCREW,
-		CHECK_FREE_SPACE_ALIGNMENT
+		RELEASE_BOTTLE_CAP
 	};
 
 	// Return values from computeControlTorques() methods
@@ -98,6 +107,39 @@ protected:
 	
 	const double kAlignmentWait = 1;
 	const double kContactWait = 1;
+	const double kGripperWait = 1;
+	
+	const std::vector<Eigen::Vector3d> kRelativeBottlePositions = {
+		Eigen::Vector3d(0,0,0),
+		Eigen::Vector3d(0,0,0),
+		Eigen::Vector3d(0,0,0),
+		Eigen::Vector3d(0,0,0)
+	};
+
+	const std::vector<Eigen::Matrix3d> kRelativeBottleOrientations = {
+		Eigen::Matrix3d::Identity(),
+		Eigen::Matrix3d::Identity(),
+		Eigen::Matrix3d::Identity(),
+		Matrix3d(1,0,0,
+		         0,1,0,
+		         0,0,1)
+	};
+
+	const std::vector<Eigen::Vector3d> kBottleCapContactPoints = {
+		Eigen::Vector3d(0,0,1),
+		Eigen::Vector3d(0,0,1),
+		Eigen::Vector3d(0,0,1),
+		Eigen::Vector3d(0,0,1)
+	};
+
+	const std::vector<Eigen::Vector3d> kRelativeBottleCapPositions = {
+		Eigen::Vector3d(0,0,0),
+		Eigen::Vector3d(0,0,0),
+		Eigen::Vector3d(0,0,0),
+		Eigen::Vector3d(0,0,0)
+	};
+
+	const size_t kNumBottles = kRelativeBottlePositions.size();
 
 	// Default gains (used only when keys are nonexistent in Redis)
 	std::map<std::string, double> K = {
@@ -136,10 +178,6 @@ protected:
 		{"kv_moment",  0},
 		{"ki_moment",  1}
 	};
-	
-
-
-
 
 	// CHANGE THE OPERATIONAL POINT!!!!!!!!!!!!
 
@@ -170,20 +208,19 @@ protected:
 	void readRedisValues();
 	void updateModel();
 	void writeRedisValues();
-	ControllerStatus computeJointSpaceControlTorques();
-	ControllerStatus computeOperationalSpaceControlTorques();
+	ControllerStatus initializeJointSpace();
+	ControllerStatus gotoBottleCap();
+	ControllerStatus grabBottleCap();
+	ControllerStatus gotoBottleViaPoint();
 	ControllerStatus alignInFreeSpace();
 	ControllerStatus freeSpace2Contact();
 	ControllerStatus alignBottleCap();
 	ControllerStatus alignBottleCapExponentialDamping();
 	ControllerStatus alignBottleCapSimple();
 	ControllerStatus alignBottleCapForce();
-	ControllerStatus checkAlignment();
 	ControllerStatus screwBottleCap();
 	ControllerStatus rewindBottleCap();
-	ControllerStatus stabilizeRewind();
-	ControllerStatus checkScrew();
-	ControllerStatus checkFreeSpaceAlignment();
+	ControllerStatus releaseBottleCap();
 
 	Eigen::Vector3d estimatePivotPoint();
 
@@ -197,37 +234,41 @@ protected:
 
 	// Timer
 	LoopTimer timer_;
-	double t_curr_;
-	uint64_t controller_counter_ = 0;
+	double t_init_;
 
 	// State machine
 	ControllerState controller_state_;
 
 	// Controller variables
 	Eigen::VectorXd command_torques_ = Eigen::VectorXd::Zero(KukaIIWA::DOF);
-	Eigen::VectorXd q_des_           = KukaIIWA::HOME_POSITION;
-	Eigen::VectorXd dq_des_          = Eigen::VectorXd::Zero(KukaIIWA::DOF);
-	Eigen::Vector3d x_des_           = KukaIIWA::HOME_POSITION_EE - kPosEndEffector;
-	Eigen::Vector3d dx_des_          = Eigen::Vector3d::Zero();
+	Eigen::VectorXd q_des_  = KukaIIWA::HOME_POSITION;
+	Eigen::VectorXd dq_des_ = Eigen::VectorXd::Zero(KukaIIWA::DOF);
+	Eigen::Vector3d x_des_  = KukaIIWA::HOME_POSITION_EE - kPosEndEffector;
+	Eigen::Vector3d dx_des_ = Eigen::Vector3d::Zero();
+	Eigen::Matrix3d R_des_  = Matrix3d(1, 0, 0,
+	                                   0,-1, 0,
+	                                   0, 0,-1);
+	double gripper_pos_des_ = SchunkGripper::POSITION_MAX;
 
 	Eigen::MatrixXd J_cap_, Jv_, Jw_, Jv_cap_, Jw_cap_;
 	Eigen::MatrixXd N_cap_, Nv_, Nv_cap_, Nvw_cap_;
 	Eigen::MatrixXd Lambda_cap_, Lambda_x_, Lambda_x_cap_, Lambda_r_cap_;
 	Eigen::VectorXd g_;
 	Eigen::Vector3d x_, dx_, w_;
-	Eigen::Vector3d F_sensor_, M_sensor_, F_x_ee_;
-	ButterworthFilter F_sensor_6d_filter_;
-	Eigen::Matrix3d R_ee_to_base_, R_des_;
+	Eigen::Matrix3d R_ee_to_base_;
 	Eigen::Vector3d dPhi_ = Eigen::Vector3d::Zero();
 
-	std::vector<Eigen::Vector3d> vec_dPhi_ = std::vector<Eigen::Vector3d>(kIntegraldPhiWindow);
-	int idx_vec_dPhi_ = 0;
-	Eigen::Vector3d integral_dPhi_ = Eigen::Vector3d::Zero();
-	double t_init_;
-	ButterworthFilter op_point_filter_;
+	Eigen::Vector3d F_sensor_, M_sensor_, F_x_ee_;
+	ButterworthFilter F_sensor_6d_filter_;
+
+	// std::vector<Eigen::Vector3d> vec_dPhi_ = std::vector<Eigen::Vector3d>(kIntegraldPhiWindow);
+	// int idx_vec_dPhi_ = 0;
+	// Eigen::Vector3d integral_dPhi_ = Eigen::Vector3d::Zero();
 	Eigen::Vector3d op_point_ = kPosEndEffector;
+	ButterworthFilter op_point_filter_;
 
 	bool controller_flag_ = false;
+	int idx_bottle_ = 0;
 
 	// angle between contact surface normal and cap normal
 	// double theta_;
