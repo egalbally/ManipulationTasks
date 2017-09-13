@@ -1,7 +1,7 @@
 
 #include "redis/RedisClient.h"
 
-namespace Optoforce {
+namespace OptoForce {
 
 const std::string KEY_3D_SENSOR_FORCE = RedisServer::KEY_PREFIX + "optoforce_3d::force";
 

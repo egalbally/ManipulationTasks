@@ -15,7 +15,7 @@
 #include <timer/LoopTimer.h>
 #include "redis/RedisClient.h"
 #include "kuka_iiwa/KukaIIWA.h"
-#include "optoforce/Optoforce.h"
+#include "optoforce/OptoForce.h"
 
 // Std
 #include <iostream>
@@ -146,7 +146,7 @@ int main() {
 		// Attempt to get force-torque measurements from sensor
 		Eigen::VectorXd FM_sensor = Eigen::VectorXd::Zero(6);
 		try {
-			FM_sensor = redis_client.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE); 
+			FM_sensor = redis_client.getEigenMatrix(OptoForce::KEY_6D_SENSOR_FORCE); 
 		} catch (...) {
 			// No force sensor readings - set 0 for simulation
 			FM_sensor.setZero();
@@ -263,9 +263,9 @@ int main() {
 				// Publish values to Redis
 				Eigen::VectorXd FM_bias(6);
 				FM_bias << Fb, Mb;
-				redis_client.setEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE_BIAS, FM_bias);
-				redis_client.set(Optoforce::KEY_6D_SENSOR_MASS, std::to_string(m));
-				redis_client.setEigenMatrix(Optoforce::KEY_6D_SENSOR_COM, r);
+				redis_client.setEigenMatrix(OptoForce::KEY_6D_SENSOR_FORCE_BIAS, FM_bias);
+				redis_client.set(OptoForce::KEY_6D_SENSOR_MASS, std::to_string(m));
+				redis_client.setEigenMatrix(OptoForce::KEY_6D_SENSOR_COM, r);
 
 				// Hold the last position
 				calibrationState = CALIBRATION_HOLD_POSITION;

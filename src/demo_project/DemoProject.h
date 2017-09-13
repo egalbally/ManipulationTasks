@@ -5,7 +5,8 @@
 #include "redis/RedisClient.h"
 #include "timer/LoopTimer.h"
 #include "kuka_iiwa/KukaIIWA.h"
-#include "optoforce/Optoforce.h"
+#include "optoforce/OptoForce.h"
+#include "optitrack/OptiTrack.h"
 #include "filters/ButterworthFilter.h"
 #include "schunk_gripper/SchunkGripper.h"
 
@@ -109,20 +110,32 @@ protected:
 	const double kContactWait = 1;
 	const double kGripperWait = 1;
 	
-	const std::vector<Eigen::Vector3d> kRelativeBottlePositions = {
-		Eigen::Vector3d(0,0,0),
-		Eigen::Vector3d(0,0,0),
-		Eigen::Vector3d(0,0,0),
-		Eigen::Vector3d(0,0,0)
+	const Eigen::Vector3d kBaseToOptiTrackOffset = Eigen::Vector3d(0.3, -0.6, 0);
+	const Eigen::Vector3d kOptiTrackToShelfOffset = Eigen::Vector3d(0, 0, 0.096);
+
+	const std::vector<Eigen::Vector3d> kContactPositionsInShelf = {
+		Eigen::Vector3d(-0.105, -0.075, 0.09),
+		Eigen::Vector3d(-0.28,  -0.09,  0.10),
+		Eigen::Vector3d(-0.455, -0.055, 0.075),
+		Eigen::Vector3d(-0.63,  -0.10,  0.06)
 	};
 
-	const std::vector<Eigen::Matrix3d> kRelativeBottleOrientations = {
-		Eigen::Matrix3d::Identity(),
-		Eigen::Matrix3d::Identity(),
-		Eigen::Matrix3d::Identity(),
-		Matrix3d(1,0,0,
-		         0,1,0,
-		         0,0,1)
+	const std::vector<Eigen::Matrix3d> kContactOrientationsInShelf = {
+		Matrix3d( 0.996218, -0.075433,  0.043123,
+			     -0.05417 , -0.927236, -0.37054,
+			      0.067936,  0.366803, -0.927815),
+
+		Matrix3d( 0.879265, -0.470356,  0.075218,
+		         -0.355996, -0.753808, -0.552305,
+		          0.31648 ,  0.458845, -0.830242),
+
+		Matrix3d( 0.762381, -0.646103, -0.036401,
+		         -0.563071, -0.63458 , -0.529396,
+		          0.318945,  0.424097, -0.847594),
+
+		Matrix3d(1,  0, 0,
+		         0, -1, 0,
+		         0,  0,-1)
 	};
 
 	const std::vector<Eigen::Vector3d> kBottleCapContactPoints = {
@@ -139,7 +152,7 @@ protected:
 		Eigen::Vector3d(0,0,0)
 	};
 
-	const size_t kNumBottles = kRelativeBottlePositions.size();
+	const size_t kNumBottles = kContactPositionsInShelf.size();
 
 	// Default gains (used only when keys are nonexistent in Redis)
 	std::map<std::string, double> K = {
@@ -257,6 +270,8 @@ protected:
 	Eigen::Vector3d x_, dx_, w_;
 	Eigen::Matrix3d R_ee_to_base_;
 	Eigen::Vector3d dPhi_ = Eigen::Vector3d::Zero();
+	Eigen::Vector3d pos_shelf_;
+	Eigen::Quaterniond ori_shelf_;
 
 	Eigen::Vector3d F_sensor_, M_sensor_, F_x_ee_;
 	ButterworthFilter F_sensor_6d_filter_;

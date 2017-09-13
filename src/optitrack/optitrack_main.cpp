@@ -7,7 +7,7 @@
  * Created: July 2017
  */
 
-
+#include "optitrack/OptiTrack.h"
 #include "optitrack/OptiTrackClient.h"
 #include "redis/RedisClient.h"
 
@@ -16,23 +16,16 @@
 
 #include <Eigen/Core>
 
-static const std::string KEY_PREFIX = RedisServer::KEY_PREFIX + "optitrack::";
-
-static const std::string KEY_TIMESTAMP          = KEY_PREFIX + "timestamp";
-static const std::string KEY_POS_RIGID_BODIES   = KEY_PREFIX + "pos_rigid_bodies";
-static const std::string KEY_ORI_RIGID_BODIES   = KEY_PREFIX + "ori_rigid_bodies";
-static const std::string KEY_POS_SINGLE_MARKERS = KEY_PREFIX + "pos_single_markers";
-static const std::string KEY_ORI_EA_RIGID_BODIES   = KEY_PREFIX + "ori_rigid_bodies_ea";
-static const std::string KEY_ORI_MAT_RIGID_BODY = KEY_PREFIX + "ori_rigid_body_mat";
-
+using namespace OptiTrack;
 
 int main(int argc, char** argv) {
 
+	Eigen::Matrix3f R_opti_to_kuka;
+	R_opti_to_kuka <<  0, 0, -1, 
+	                  -1, 0, 0, 
+	                   0, 1, 0;
+	const Eigen::Quaternionf quat_opti_to_kuka(R_opti_to_kuka);
 
-	Eigen::Matrix3f opti_rot; 
-	opti_rot << 0, 0, -1, 
-	            -1, 0, 0, 
-	            0, 1, 0; 
 	// Usage
 	if (argc < 3) {
 		std::cout << "Usage: optitrack_redis [-i INPUT_CSV_FILE]" << std::endl
@@ -106,31 +99,23 @@ int main(int argc, char** argv) {
 		double t_curr = optitrack.frameTime();
 		Eigen::MatrixXf pos_rigid_bodies(optitrack.pos_rigid_bodies_.size(), 3);
 		Eigen::MatrixXf ori_rigid_bodies(optitrack.pos_rigid_bodies_.size(), 4);
-		Eigen::MatrixXf ori_ea_rigid_bodies(optitrack.pos_rigid_bodies_.size(),3);
 		Eigen::MatrixXf pos_single_markers(optitrack.pos_single_markers_.size(), 3);
-		Eigen::Matrix3f ori_mat_rigid_body;
 		for (int i = 0; i < optitrack.pos_rigid_bodies_.size(); i++) {
-			pos_rigid_bodies.row(i) = opti_rot* optitrack.pos_rigid_bodies_[i];
+			pos_rigid_bodies.row(i) = R_opti_to_kuka * optitrack.pos_rigid_bodies_[i];
 		}
 		for (int i = 0; i < optitrack.ori_rigid_bodies_.size(); i++) {
-			Eigen::Quaternionf ori = optitrack.ori_rigid_bodies_[i];
-			Eigen::Matrix3f mat = ori.toRotationMatrix(); 
-			Eigen::Vector3f ea = opti_rot * mat.eulerAngles(0, 1, 2); 
-			ori_rigid_bodies.row(i) << ori.x(), ori.y(), ori.z(), ori.w();
-			ori_ea_rigid_bodies.row(i) = ea.transpose();
+			Eigen::Quaternionf ori = quat_opti_to_kuka * optitrack.ori_rigid_bodies_[i] * quat_opti_to_kuka.conjugate();
+			ori_rigid_bodies.row(i) = ori.coeffs();
 		}
 		for (int i = 0; i < optitrack.pos_single_markers_.size(); i++) {
 			pos_single_markers.row(i) = optitrack.pos_single_markers_[i];
 		}
-
-		redis.setEigenMatrix(KEY_ORI_EA_RIGID_BODIES, ori_ea_rigid_bodies);
 
 		redis.pipeset({
 			{KEY_TIMESTAMP, std::to_string(t_curr)},
 			{KEY_POS_RIGID_BODIES, RedisClient::encodeEigenMatrix(pos_rigid_bodies)},
 			{KEY_ORI_RIGID_BODIES, RedisClient::encodeEigenMatrix(ori_rigid_bodies)},
 			{KEY_POS_SINGLE_MARKERS, RedisClient::encodeEigenMatrix(pos_single_markers)},
-			{KEY_ORI_MAT_RIGID_BODY, RedisClient::encodeEigenMatrix(ori_mat_rigid_body)}
 		});
 	}
 

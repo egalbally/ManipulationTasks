@@ -44,7 +44,7 @@ private:
 
 	/***** Private Constants *****/
 
-	const double kControlFrequency = 1000;
+	const double kControlFrequency = 500;
 	const float kForceLimit = 75.0;
 	const float kAcceleration = 4.5;
 	const float kSpeed = 0.35;

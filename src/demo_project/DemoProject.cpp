@@ -56,8 +56,8 @@ void DemoProject::readRedisValues() {
 	controller_flag_ = stoi(redis_.get(KEY_UI_FLAG)) > 0;
 
 	// Offset force bias
-	Eigen::VectorXd F_sensor_6d = redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE);
-	F_sensor_6d -= redis_.getEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE_BIAS);
+	Eigen::VectorXd F_sensor_6d = redis_.getEigenMatrix(OptoForce::KEY_6D_SENSOR_FORCE);
+	F_sensor_6d -= redis_.getEigenMatrix(OptoForce::KEY_6D_SENSOR_FORCE_BIAS);
 	F_sensor_6d = F_sensor_6d_filter_.update(F_sensor_6d);
 
 	// Transform sensor measurements to EE frame
@@ -65,7 +65,11 @@ void DemoProject::readRedisValues() {
 	M_sensor_ = F_sensor_6d.tail(3);
 
 	// Publish filtered force to Redis
-	redis_.setEigenMatrix(Optoforce::KEY_6D_SENSOR_FORCE + "_controller", F_sensor_6d);
+	redis_.setEigenMatrix(OptoForce::KEY_6D_SENSOR_FORCE + "_controller", F_sensor_6d);
+
+	// Get position of shelf
+	pos_shelf_ = redis_.getEigenMatrix(OptiTrack::KEY_POS_RIGID_BODIES) + kBaseToOptiTrackOffset;
+	ori_shelf_.coeffs() = redis_.getEigenMatrix(OptiTrack::KEY_ORI_RIGID_BODIES);
 }
 
 /**
@@ -241,7 +245,37 @@ DemoProject::ControllerStatus DemoProject::grabBottleCap() {
  * Go to bottle via point before approaching for contact.
  */
 DemoProject::ControllerStatus DemoProject::gotoBottleViaPoint() {
-	return FINISHED;
+	// Position
+	redis_.setEigenMatrix("a", ori_shelf_.matrix());
+	x_des_ = ori_shelf_.matrix() * kContactPositionsInShelf[idx_bottle_] + pos_shelf_;
+	Eigen::Vector3d x_err = x_ - x_des_;
+
+	// Velocity saturation
+	dx_des_ = -K["kp_pos_free"]/ K["kv_pos_free"] * x_err;
+	double v = kMaxVelocity / dx_des_.norm();
+	if (v > 1) v = 1;
+	Eigen::Vector3d dx_err = dx_ - v * dx_des_;
+	Eigen::Vector3d ddx = - K["kv_pos_free"] * dx_err;
+
+	// Orientation
+	R_des_ = ori_shelf_.matrix() * kContactOrientationsInShelf[idx_bottle_];
+	robot->orientationError(dPhi_, R_des_, R_ee_to_base_);
+	Eigen::Vector3d dw = -K["kp_ori_free"] * dPhi_ - K["kv_ori_free"] * w_;
+
+	// Nullspace damping	
+	Eigen::VectorXd ddq = -K["kv_joint_free"] * robot->_dq;
+	Eigen::VectorXd F_joint = robot->_M * ddq; 
+
+	// Command torques
+	Eigen::VectorXd ddxdw(6);
+	ddxdw << ddx, dw;
+	Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
+	command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
+
+	// Finish if the robot has converged to desired position
+	if (x_err.norm() < 0.01 && dx_.norm() < kToleranceAlignDx) {
+		return FINISHED;
+	}
 }
 
 /**
@@ -686,7 +720,7 @@ void DemoProject::runLoop() {
 			case JOINT_SPACE_INITIALIZATION:
 				if (initializeJointSpace() == FINISHED) {
 					cout << "JOINT_SPACE_INITIALIZATION => ALIGN_FREE_SPACE" << endl;
-					controller_state_ = ALIGN_FREE_SPACE; //ALIGN_BOTTLE_CAP
+					controller_state_ = GOTO_BOTTLE_VIA_POINT; //ALIGN_BOTTLE_CAP
 				}
 				break;
 
@@ -712,7 +746,9 @@ void DemoProject::runLoop() {
 			case GOTO_BOTTLE_VIA_POINT:
 				if (gotoBottleViaPoint() == FINISHED) {
 					cout << "GOTO_BOTTLE_VIA_POINT      => FREE_SPACE_TO_CONTACT" << endl;
-					controller_state_ = FREE_SPACE_TO_CONTACT;
+					idx_bottle_++;
+					if (idx_bottle_ == kNumBottles) idx_bottle_--;
+					// controller_state_ = FREE_SPACE_TO_CONTACT;
 				}
 				break;
 

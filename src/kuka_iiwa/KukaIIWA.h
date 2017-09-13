@@ -60,7 +60,7 @@ const Eigen::ArrayXd TORQUE_LIMITS   = VectorXd(176.0, 176.0, 110.0, 110.0, 110.
 const Eigen::ArrayXd JERK_LIMITS     = VectorXd(8.8, 8.8, 5.5, 5.5, 5.5, 2.0, 2.0);
 
 // Height limits for the wrist [low high]
-const double POS_WRIST_LIMITS[2] = {0.45, 1.05};
+const double POS_WRIST_LIMITS[2] = {0.35, 1.05};
 
 }
 
