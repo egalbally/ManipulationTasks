@@ -170,6 +170,10 @@ void DemoProject::updateModel() {
 	// Jacobians
 	// op_point_ = estimatePivotPoint();
 	op_point_ = kContactPointsInEE[idx_bottle_];
+	if (is_screwing_) {
+		op_point_(0) = 0;
+		op_point_(1) = 0;
+	}
 	J_cap_ = robot->J("link6", op_point_);
 	Jv_ = robot->Jv("link6", Eigen::Vector3d::Zero());
 	Jw_ = robot->Jw("link6");
@@ -278,7 +282,7 @@ DemoProject::ControllerStatus DemoProject::gotoBottleViaPoint() {
 	command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
 
 	// Finish if the robot has converged to desired position
-	if (x_err.norm() < 0.01 && dx_.norm() < kToleranceAlignDx) {
+	if (x_err.norm() < kToleranceAlignX && dx_.norm() < kToleranceAlignDx) {
 		return FINISHED;
 	}
 }
@@ -358,15 +362,11 @@ DemoProject::ControllerStatus DemoProject::freeSpace2Contact() {
 
 	// Position
 	x_des_ = ori_shelf_.matrix() * kContactPositionsInShelf[idx_bottle_] + pos_shelf_;
-	Eigen::Vector3d force_axis = ori_shelf_.matrix() * -kSafetyDistance2Rim[idx_bottle_];
+	Eigen::Vector3d force_axis = ori_shelf_.matrix() * kSafetyDistance2Rim[idx_bottle_];
 	force_axis /= force_axis.norm();
-	redis_.setEigenMatrix("a", force_axis);
-	redis_.setEigenMatrix("b", Eigen::Matrix3d::Identity() - force_axis * force_axis.transpose());
-	// x_des_ = (Eigen::Matrix3d::Identity() - force_axis * force_axis.transpose()) * x_des_;
-	// x_des_ = x_ + 0.02 * force_axis;
 	Eigen::Vector3d x_err = x_ - x_des_;
 	x_err = (Eigen::Matrix3d::Identity() - force_axis * force_axis.transpose()) * x_err;
-	x_err += 0.02 * force_axis;
+	x_err += K["kp_free_to_contact"] * force_axis;
 
 	// Velocity saturation
 	dx_des_ = -K["kp_pos_free"]/ K["kv_pos_free"] * x_err;
@@ -390,13 +390,15 @@ DemoProject::ControllerStatus DemoProject::freeSpace2Contact() {
 	Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
 	command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
 
-
 	// Stabilize contact
-	// double t_curr = timer_.elapsedTime();
-	// if (F_sensor_.norm() > 1.0) {
-	// 	return (t_curr - t_init_ >= kContactWait) ? FINISHED : STABILIZING;
-	// }
-	// t_init_ = t_curr;
+	double t_curr = timer_.elapsedTime();
+	Eigen::Vector3d F_sensor_grav_comp = F_sensor_ - R_ee_to_base_.transpose() * Eigen::Vector3d(0, 0, kToolMass[idx_bottle_]);
+	redis_.setEigenMatrix("a", F_sensor_grav_comp);
+	redis_.set("b", to_string(F_sensor_grav_comp.norm()));
+	if (F_sensor_grav_comp.norm() > 4) {
+		return (t_curr - t_init_ >= kContactWait) ? FINISHED : STABILIZING;
+	}
+	t_init_ = t_curr;
 
 	return RUNNING;
 }
@@ -418,12 +420,14 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
 	Eigen::Vector3d F_des_ee = Eigen::Vector3d(0, 0, 15.0) + K["kp_sliding"] * sliding_vector;
 	Eigen::Vector3d F_des = R_ee_to_base_ * F_des_ee;
 	Eigen::Vector3d F_err = -R_ee_to_base_ * F_sensor_ - F_des;
+	redis_.setEigenMatrix("F_des", F_des);
+	redis_.setEigenMatrix("F_err", F_err);
 
 	Eigen::Vector3d M_des = R_ee_to_base_ * Eigen::Vector3d(0, 0, 0);
 	Eigen::Vector3d M_err = -R_ee_to_base_ * M_sensor_ - M_des;
 
 	// Integral error
-	if (F_err.norm() > 3) {
+	if (F_err.norm() > 7) {
 		integral_F_err.setZero();
 		integral_M_err.setZero();
 	} else {
@@ -540,7 +544,7 @@ DemoProject::ControllerStatus DemoProject::screwBottleCap() {
 
 	// Check screw
 	double t_curr = timer_.elapsedTime();
-	if (abs(q_screw_err) < 0.1) {
+	if (abs(q_screw_err) < 1) {
 		if (M_sensor_(2) < -0.5) {
 			return FINISHED;
 		}
@@ -666,6 +670,7 @@ void DemoProject::runLoop() {
 				break;
 
 			case SCREW_BOTTLE_CAP:
+				is_screwing_ = true;
 				switch (screwBottleCap()) {
 					case FINISHED:
 						cout << "Success!! SCREW_BOTTLE_CAP => RELEASE_BOTTLE_CAP" << endl;
@@ -673,10 +678,12 @@ void DemoProject::runLoop() {
 						// t_init_ = timer_.elapsedTime();
 						controller_flag_ = false;
 						redis_.set(KEY_UI_FLAG, to_string(controller_flag_));
+						is_screwing_ = false;
 						break;
 					case FAILED:
 						cout << "Fail.     SCREW_BOTTLE_CAP => REWIND_BOTTLE_CAP" << endl;
 						controller_state_ = REWIND_BOTTLE_CAP;
+						is_screwing_ = false;
 						break;
 					default:
 						break;

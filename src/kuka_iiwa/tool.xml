@@ -3,7 +3,7 @@
 <tool name="calibration_compensation">
 	<inertial>
 		<origin xyz="0.0 0.0 0.02" />
-		<mass value="0.29" /><!-- no lid
+		<mass value="0.34" /><!-- no lid
 		<mass value="0.33" /><!-- small lid
 		<mass value="0.38" /><!-- small lid -->
 		<!-- <mass value="0.6" /> -->

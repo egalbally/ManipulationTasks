@@ -92,7 +92,7 @@ protected:
 
 	const double kToleranceInitQ  = 0.5;  // Joint space initialization tolerance
 	const double kToleranceInitDq = 0.1;  // Joint space initialization tolerance
-	const double kToleranceAlignX = 0.005;
+	const double kToleranceAlignX = 0.02;
 	const double kToleranceAlignDx = 0.001;
 
 	const double kMaxVelocity = 0.1;  // Maximum end effector velocity
@@ -113,7 +113,7 @@ protected:
 	const Eigen::Vector3d kShelfHeight = Eigen::Vector3d(0, 0, 0.11) - kOptiTrackToShelfOffset;
 
 	const std::vector<Eigen::Vector3d> kContactPositionsInShelf = {
-		Eigen::Vector3d(-0.074, -0.005, 0.095),
+		Eigen::Vector3d(-0.074, -0.005, 0.10),
 		Eigen::Vector3d(-0.24,  -0.01,  0.10),
 		Eigen::Vector3d(-0.42, 0.005, 0.075),
 		Eigen::Vector3d(-0.605,  -0.03,  0.1)
@@ -128,16 +128,16 @@ protected:
 
 	const std::vector<Eigen::Matrix3d> kContactOrientationsInShelf = {
 		Matrix3d( 1,  0,    0,
-		          0, -0.8, -0.6,
-		          0,  0.6, -0.8),
+		          0, -0.7071, -0.7071,
+		          0,  0.7071, -0.7071),
 
 		Matrix3d( 1,  0,    0,
-		          0, -0.8, -0.6,
-		          0,  0.6, -0.8),
+		          0, -0.7071, -0.7071,
+		          0,  0.7071, -0.7071),
 
 		Matrix3d( 1,  0,    0,
-		          0, -0.8, -0.6,
-		          0,  0.6, -0.8),
+		          0, -0.7071, -0.7071,
+		          0,  0.7071, -0.7071),
 
 		Matrix3d(1,  0, 0,
 		         0, -1, 0,
@@ -153,11 +153,13 @@ protected:
 
 	// Tool mass
 	const std::vector<double> kToolMass={
-		0.34, // medium cap
-		0.34, // small cap
-		0.42, // large cap
-		0.34  // medium cap
+		0.55, // medium cap
+		0.42, // small cap
+		0.48, // large cap
+		0.55  // medium cap
 	};
+
+
 
 	const size_t kNumBottles = kContactPositionsInShelf.size();
 
@@ -175,6 +177,7 @@ protected:
 		{"kp_screw",  15},
 		{"kv_screw",   4},
 
+		{"kp_free_to_contact", 0.015},
 		{"kp_sliding", 1.5},
 		{"kp_bias",      0}, // 1.2
 
@@ -195,7 +198,7 @@ protected:
 		{"kv_force",   0},
 		{"ki_force",   1},
 		{"kp_moment",  2}, //3 (for small and medium)
-		{"kv_moment",  0},
+		{"kv_moment",  1},
 		{"ki_moment",  1}
 	};
 
@@ -291,6 +294,7 @@ protected:
 
 	bool controller_flag_ = false;
 	int idx_bottle_ = 0;
+	bool is_screwing_ = false;
 
 	// angle between contact surface normal and cap normal
 	// double theta_;
