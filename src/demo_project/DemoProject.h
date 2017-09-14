@@ -110,53 +110,55 @@ protected:
 	const double kContactWait = 1;
 	const double kGripperWait = 1;
 	
-	const Eigen::Vector3d kBaseToOptiTrackOffset = Eigen::Vector3d(0.3, -0.6, 0);
+	const Eigen::Vector3d kBaseToOptiTrackOffset = Eigen::Vector3d(0.28, -0.69, 0);
 	const Eigen::Vector3d kOptiTrackToShelfOffset = Eigen::Vector3d(0, 0, 0.096);
+	const Eigen::Vector3d kShelfHeight = Eigen::Vector3d(0, 0, 0.11) - kOptiTrackToShelfOffset;
 
 	const std::vector<Eigen::Vector3d> kContactPositionsInShelf = {
-		Eigen::Vector3d(-0.105, -0.075, 0.09),
-		Eigen::Vector3d(-0.28,  -0.09,  0.10),
-		Eigen::Vector3d(-0.455, -0.055, 0.075),
-		Eigen::Vector3d(-0.63,  -0.10,  0.06)
+		Eigen::Vector3d(-0.075, -0.005, 0.09),
+		Eigen::Vector3d(-0.25,  -0.01,  0.10),
+		Eigen::Vector3d(-0.43, 0.005, 0.075),
+		Eigen::Vector3d(-0.62,  -0.03,  0.1)
 	};
 
 	const std::vector<Eigen::Matrix3d> kContactOrientationsInShelf = {
-		Matrix3d( 0.996218, -0.075433,  0.043123,
-			     -0.05417 , -0.927236, -0.37054,
-			      0.067936,  0.366803, -0.927815),
+		Matrix3d( 1,  0,    0,
+		          0, -0.8, -0.6,
+		          0,  0.6, -0.8),
 
-		Matrix3d( 0.879265, -0.470356,  0.075218,
-		         -0.355996, -0.753808, -0.552305,
-		          0.31648 ,  0.458845, -0.830242),
+		Matrix3d( 1,  0,    0,
+		          0, -0.8, -0.6,
+		          0,  0.6, -0.8),
 
-		Matrix3d( 0.762381, -0.646103, -0.036401,
-		         -0.563071, -0.63458 , -0.529396,
-		          0.318945,  0.424097, -0.847594),
+		Matrix3d( 1,  0,    0,
+		          0, -0.8, -0.6,
+		          0,  0.6, -0.8),
 
 		Matrix3d(1,  0, 0,
 		         0, -1, 0,
 		         0,  0,-1)
 	};
 
-	const std::vector<Eigen::Vector3d> kBottleCapContactPoints = {
-		Eigen::Vector3d(0,0,1),
-		Eigen::Vector3d(0,0,1),
-		Eigen::Vector3d(0,0,1),
-		Eigen::Vector3d(0,0,1)
+	const std::vector<Eigen::Vector3d> kContactPointsInEE = {
+		Eigen::Vector3d(0,-0.035, 0.14),
+		Eigen::Vector3d(0,-0.02,  0.15),
+		Eigen::Vector3d(0,-0.055, 0.14),
+		Eigen::Vector3d(0, 0.035, 0.14)
 	};
 
-	const std::vector<Eigen::Vector3d> kRelativeBottleCapPositions = {
-		Eigen::Vector3d(0,0,0),
-		Eigen::Vector3d(0,0,0),
-		Eigen::Vector3d(0,0,0),
-		Eigen::Vector3d(0,0,0)
+	// Tool mass
+	const std::vector<double> kToolMass={
+		0.34, // medium cap
+		0.34, // small cap
+		0.42, // large cap
+		0.34  // medium cap
 	};
 
-	const size_t kNumBottles = kContactPositionsInShelf.size();
+	const size_t kNumBottles = 1;//kContactPositionsInShelf.size();
 
 	// Default gains (used only when keys are nonexistent in Redis)
 	std::map<std::string, double> K = {
-		{"kp_joint_init", 10},
+		{"kp_joint_init", 20},
 		{"kv_joint_init",  5},
 
 		{"kp_pos",    15},
@@ -171,10 +173,10 @@ protected:
 		{"kp_sliding", 1.5},
 		{"kp_bias",      0}, // 1.2
 
-		{"kp_pos_free",   30},
+		{"kp_pos_free",   40},
 		{"kv_pos_free",   10},
 		{"kp_ori_free",   5},
-		{"kv_ori_free",   5},
+		{"kv_ori_free",   2},
 		{"kv_joint_free", 5},
 
 		{"kp_ori_exp",  15},
