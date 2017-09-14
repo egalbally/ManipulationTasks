@@ -252,8 +252,7 @@ DemoProject::ControllerStatus DemoProject::grabBottleCap() {
  */
 DemoProject::ControllerStatus DemoProject::gotoBottleViaPoint() {
 	// Position
-	redis_.setEigenMatrix("a", ori_shelf_.matrix());
-	x_des_ = ori_shelf_.matrix() * kContactPositionsInShelf[idx_bottle_] + pos_shelf_;
+	x_des_ = ori_shelf_.matrix() * (kContactPositionsInShelf[idx_bottle_] + kSafetyDistance2Rim[idx_bottle_]) + pos_shelf_;
 	Eigen::Vector3d x_err = x_ - x_des_;
 
 	// Velocity saturation
@@ -336,14 +335,48 @@ DemoProject::ControllerStatus DemoProject::gotoBottleViaPoint() {
  * while maintaining orientation
  */
 DemoProject::ControllerStatus DemoProject::freeSpace2Contact() {
-	x_des_ = Eigen::Vector3d(0.012592, -0.670408, 0.32966);
-	x_des_(0) = x_(0) - 0.02;
+	// x_des_ = Eigen::Vector3d(0.012592, -0.670408, 0.32966);
+	// x_des_(0) = x_(0) - 0.02;
+	// Eigen::Vector3d x_err = x_ - x_des_;
+	// Eigen::Vector3d dx_err = dx_ - dx_des_;
+	// Eigen::Vector3d ddx = -10 * x_err - K["kv_pos"] * dx_err;
+
+	// // Orientation
+	// R_des_ << 0.647176, -0.289006, -0.705435, -0.416645, -0.909016, -0.009826, -0.638412, 0.300275, -0.708707;
+	// robot->orientationError(dPhi_, R_des_, R_ee_to_base_);
+	// Eigen::Vector3d dw = -K["kp_ori_free"] * dPhi_ - K["kv_ori_free"] * w_;
+
+	// // Nullspace damping	
+	// Eigen::VectorXd ddq = -K["kv_joint_free"] * robot->_dq;
+	// Eigen::VectorXd F_joint = robot->_M * ddq; 
+
+	// // Position-orientation combined
+	// Eigen::VectorXd ddxdw(6);
+	// ddxdw << ddx, dw;
+	// Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
+	// command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
+
+	// Position
+	x_des_ = ori_shelf_.matrix() * kContactPositionsInShelf[idx_bottle_] + pos_shelf_;
+	Eigen::Vector3d force_axis = ori_shelf_.matrix() * -kSafetyDistance2Rim[idx_bottle_];
+	force_axis /= force_axis.norm();
+	redis_.setEigenMatrix("a", force_axis);
+	redis_.setEigenMatrix("b", Eigen::Matrix3d::Identity() - force_axis * force_axis.transpose());
+	// x_des_ = (Eigen::Matrix3d::Identity() - force_axis * force_axis.transpose()) * x_des_;
+	// x_des_ = x_ + 0.02 * force_axis;
 	Eigen::Vector3d x_err = x_ - x_des_;
-	Eigen::Vector3d dx_err = dx_ - dx_des_;
-	Eigen::Vector3d ddx = -10 * x_err - K["kv_pos"] * dx_err;
+	x_err = (Eigen::Matrix3d::Identity() - force_axis * force_axis.transpose()) * x_err;
+	x_err += 0.02 * force_axis;
+
+	// Velocity saturation
+	dx_des_ = -K["kp_pos_free"]/ K["kv_pos_free"] * x_err;
+	double v = kMaxVelocity / dx_des_.norm();
+	if (v > 1) v = 1;
+	Eigen::Vector3d dx_err = dx_ - v * dx_des_;
+	Eigen::Vector3d ddx = - K["kv_pos_free"] * dx_err;
 
 	// Orientation
-	R_des_ << 0.647176, -0.289006, -0.705435, -0.416645, -0.909016, -0.009826, -0.638412, 0.300275, -0.708707;
+	R_des_ = ori_shelf_.matrix() * kContactOrientationsInShelf[idx_bottle_];
 	robot->orientationError(dPhi_, R_des_, R_ee_to_base_);
 	Eigen::Vector3d dw = -K["kp_ori_free"] * dPhi_ - K["kv_ori_free"] * w_;
 
@@ -351,18 +384,19 @@ DemoProject::ControllerStatus DemoProject::freeSpace2Contact() {
 	Eigen::VectorXd ddq = -K["kv_joint_free"] * robot->_dq;
 	Eigen::VectorXd F_joint = robot->_M * ddq; 
 
-	// Position-orientation combined
+	// Command torques
 	Eigen::VectorXd ddxdw(6);
 	ddxdw << ddx, dw;
 	Eigen::VectorXd F_xw = Lambda_cap_ * ddxdw;
 	command_torques_ = J_cap_.transpose() * F_xw + N_cap_.transpose() * F_joint;
 
+
 	// Stabilize contact
-	double t_curr = timer_.elapsedTime();
-	if (F_sensor_.norm() > 1.0) {
-		return (t_curr - t_init_ >= kContactWait) ? FINISHED : STABILIZING;
-	}
-	t_init_ = t_curr;
+	// double t_curr = timer_.elapsedTime();
+	// if (F_sensor_.norm() > 1.0) {
+	// 	return (t_curr - t_init_ >= kContactWait) ? FINISHED : STABILIZING;
+	// }
+	// t_init_ = t_curr;
 
 	return RUNNING;
 }
@@ -594,9 +628,9 @@ void DemoProject::runLoop() {
 			case GOTO_BOTTLE_VIA_POINT:
 				if (gotoBottleViaPoint() == FINISHED) {
 					cout << "GOTO_BOTTLE_VIA_POINT      => FREE_SPACE_TO_CONTACT" << endl;
-					idx_bottle_++;
-					if (idx_bottle_ == kNumBottles) idx_bottle_--;
-					// controller_state_ = FREE_SPACE_TO_CONTACT;
+					// idx_bottle_++;
+					//if (idx_bottle_ == kNumBottles) idx_bottle_--;
+					controller_state_ = FREE_SPACE_TO_CONTACT;
 				}
 				break;
 

@@ -99,8 +99,6 @@ protected:
 	const double kMaxVelocityScrew = 3; // 3 radians per second
 	const double kMaxVelocityInit = 1; // 1 radian per second
 
-	const double kSafetyDistance2Rim = 0.03;
-
 	const int kControlFreq = 1000;         // 1 kHz control loop
 	const int kInitializationPause = 1e6;  // 1ms pause before starting control loop
 
@@ -115,10 +113,17 @@ protected:
 	const Eigen::Vector3d kShelfHeight = Eigen::Vector3d(0, 0, 0.11) - kOptiTrackToShelfOffset;
 
 	const std::vector<Eigen::Vector3d> kContactPositionsInShelf = {
-		Eigen::Vector3d(-0.075, -0.005, 0.09),
-		Eigen::Vector3d(-0.25,  -0.01,  0.10),
-		Eigen::Vector3d(-0.43, 0.005, 0.075),
-		Eigen::Vector3d(-0.62,  -0.03,  0.1)
+		Eigen::Vector3d(-0.074, -0.005, 0.095),
+		Eigen::Vector3d(-0.24,  -0.01,  0.10),
+		Eigen::Vector3d(-0.42, 0.005, 0.075),
+		Eigen::Vector3d(-0.605,  -0.03,  0.1)
+	};
+
+	const std::vector<Eigen::Vector3d> kSafetyDistance2Rim = {
+		Eigen::Vector3d(0, 0.02, 0),
+		Eigen::Vector3d(0, 0.02, 0),
+		Eigen::Vector3d(0, 0.02, 0),
+		Eigen::Vector3d(0, 0, 0.02)
 	};
 
 	const std::vector<Eigen::Matrix3d> kContactOrientationsInShelf = {
@@ -154,7 +159,7 @@ protected:
 		0.34  // medium cap
 	};
 
-	const size_t kNumBottles = 1;//kContactPositionsInShelf.size();
+	const size_t kNumBottles = kContactPositionsInShelf.size();
 
 	// Default gains (used only when keys are nonexistent in Redis)
 	std::map<std::string, double> K = {
