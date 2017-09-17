@@ -98,13 +98,13 @@ void DemoProject::writeRedisValues() {
 		command_torques_.setZero();
 	}
 
-	if (controller_flag_) {
-		// Send torques
-		redis_.setEigenMatrix(KukaIIWA::KEY_COMMAND_TORQUES, command_torques_);
+	// if (controller_flag_) {
+	// Send torques
+	redis_.setEigenMatrix(KukaIIWA::KEY_COMMAND_TORQUES, command_torques_);
 
-		// Change tool mass
-		redis_.set(KukaIIWA::KEY_TOOL_MASS, to_string(kToolMass[idx_bottle_]));
-	}
+	// Change tool mass
+	redis_.set(KukaIIWA::KEY_TOOL_MASS, to_string(kToolMass[idx_bottle_]));
+	// }
 }
 
 /**
@@ -600,11 +600,12 @@ void DemoProject::runLoop() {
 				if (isnan(robot->_q) || !controller_flag_) continue;
 				cout << "REDIS_SYNCHRONIZATION      => JOINT_SPACE_INITIALIZATION" << endl;
 				controller_state_ = JOINT_SPACE_INITIALIZATION;
+				controller_flag_ = false;
 				break;
 
 			// Initialize robot to default joint configuration - joint space
 			case JOINT_SPACE_INITIALIZATION:
-				if (initializeJointSpace() == FINISHED) {
+				if (initializeJointSpace() == FINISHED && controller_flag_) {
 					cout << "JOINT_SPACE_INITIALIZATION => ALIGN_FREE_SPACE" << endl;
 					controller_state_ = GOTO_BOTTLE_VIA_POINT; //ALIGN_BOTTLE_CAP
 				}
@@ -696,6 +697,7 @@ void DemoProject::runLoop() {
 				if (releaseBottleCap() == FINISHED) {
 					cout << "RELEASE_BOTTLE_CAP         => JOINT SPACE INITIALIZATION" << endl;
 					controller_state_ = JOINT_SPACE_INITIALIZATION;
+					controller_flag_ = false;
 					idx_bottle_++;
 				}
 				break;
