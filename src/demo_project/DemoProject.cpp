@@ -560,15 +560,12 @@ DemoProject::ControllerStatus DemoProject::screwBottleCap() {
 
 	// Check screw
 	double t_curr = timer_.elapsedTime();
-	if (abs(q_screw_err) < 1.5) {
-		if (M_sensor_(2) < -0.5) {
-			return FINISHED;
-		}
-		if (q_screw_err < 0.1) {
-			if (w_.norm() < 0.01 && R_ee_to_base_.col(2).dot(Eigen::Vector3d(0,0,-1)) > 0.999) {
-				if (idx_bottle_ == 1 && x_(2) < 0.22) return FINISHED;
-				if (idx_bottle_ == 2 && x_(2) < 0.18) return FINISHED;
-			}
+	if (abs(q_screw_err) < 1.5 && M_sensor_(2) < -0.5) return FINISHED;
+	if (abs(q_screw_err) < 0.5) {
+		cout << w_.norm() << " " << R_ee_to_base_.col(2).dot(Eigen::Vector3d(0,0,-1)) << " " << x_(2) << endl;
+		if (w_.norm() < 0.05 && R_ee_to_base_.col(2).dot(Eigen::Vector3d(0,0,-1)) > 0.999) {
+			if (idx_bottle_ == 1 && x_(2) < 0.215) return FINISHED;
+			if (idx_bottle_ == 2 && x_(2) < 0.18) return FINISHED;
 		}
 		return (t_curr - t_init_ >= kAlignmentWait) ? FAILED : STABILIZING;
 	}
@@ -745,7 +742,7 @@ void DemoProject::runLoop() {
 			case REWIND_BOTTLE_CAP:
 				is_screwing_ = true;
 				if (rewindBottleCap() == FINISHED) {
-					cout << "REWIND_BOTTLE_CAP          => REALIGN_BOTTLE_CAP" << endl;
+					cout << "REWIND_BOTTLE_CAP          => SCREW_BOTTLE_CAP" << endl;
 					controller_state_ = SCREW_BOTTLE_CAP;
 					is_screwing_ = false;
 				}
