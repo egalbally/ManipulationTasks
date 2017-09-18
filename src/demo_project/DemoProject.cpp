@@ -564,8 +564,12 @@ DemoProject::ControllerStatus DemoProject::screwBottleCap() {
 		if (M_sensor_(2) < -0.5) {
 			return FINISHED;
 		}
-		if (idx_bottle_ == 1 && x_(2) < 0.22 && R_ee_to_base_.col(2).dot(Eigen::Vector3d(0,0,-1)) > 0.98) return FINISHED;
-		if (idx_bottle_ == 2 && x_(2) < 0.181 && R_ee_to_base_.col(2).dot(Eigen::Vector3d(0,0,-1)) > 0.98) return FINISHED;
+		if (q_screw_err < 0.1) {
+			if (w_.norm() < 0.01 && R_ee_to_base_.col(2).dot(Eigen::Vector3d(0,0,-1)) > 0.999) {
+				if (idx_bottle_ == 1 && x_(2) < 0.22) return FINISHED;
+				if (idx_bottle_ == 2 && x_(2) < 0.18) return FINISHED;
+			}
+		}
 		return (t_curr - t_init_ >= kAlignmentWait) ? FAILED : STABILIZING;
 	}
 	t_init_ = t_curr;
@@ -579,24 +583,27 @@ DemoProject::ControllerStatus DemoProject::screwBottleCap() {
  * Release bottle cap.
  */
 DemoProject::ControllerStatus DemoProject::releaseBottleCap() {
+	if (idx_bottle_ == 1 || idx_bottle_ == 2) {
 		// Finish if the robot has converged to the last joint limit (+15deg)
-	double q_screw_err = robot->_q(6) - (KukaIIWA::JOINT_LIMITS(6) - 15.0 * M_PI / 180.0);
-	redis_.set(KukaIIWA::KEY_PREFIX + "tasks::q_screw_err", std::to_string(q_screw_err));
+		double q_screw_err = robot->_q(6) - (KukaIIWA::JOINT_LIMITS(6) - 15.0 * M_PI / 180.0);
+		redis_.set(KukaIIWA::KEY_PREFIX + "tasks::q_screw_err", std::to_string(q_screw_err));
 
-	//Joint space velocity saturation
-	double dq_screw_des = -(K["kp_screw"] / K["kv_screw"]) * q_screw_err;
-	double v = kMaxVelocityScrew / abs(dq_screw_des);
-	if (v > 1) v = 1;
-	double dq_screw_err = robot->_dq(6) - v * dq_screw_des;
+		//Joint space velocity saturation
+		double dq_screw_des = -(K["kp_screw"] / K["kv_screw"]) * q_screw_err;
+		double v = kMaxVelocityScrew / abs(dq_screw_des);
+		if (v > 1) v = 1;
+		double dq_screw_err = robot->_dq(6) - v * dq_screw_des;
 
-	Eigen::VectorXd ddq = Eigen::VectorXd::Zero(7);
-	ddq(6) = -K["kv_screw"] * dq_screw_err;
+		Eigen::VectorXd ddq = Eigen::VectorXd::Zero(7);
+		ddq(6) = -K["kv_screw"] * dq_screw_err;
 
-	// Control torques
-	// Eigen::Vector3d F_x = Lambda_x_ * ddx;
-	Eigen::Vector3d F_x = R_ee_to_base_ * F_x_ee_;
-	command_torques_ = robot->_M * ddq;
-
+		// Control torques
+		// Eigen::Vector3d F_x = Lambda_x_ * ddx;
+		Eigen::Vector3d F_x = R_ee_to_base_ * F_x_ee_;
+		command_torques_ = robot->_M * ddq;
+	} else {
+		command_torques_.setZero();
+	}
 	return controller_flag_ ? FINISHED : RUNNING;
 
 	// gripper_pos_des_ = SchunkGripper::POSITION_MIN;
