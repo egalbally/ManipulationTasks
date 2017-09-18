@@ -35,6 +35,7 @@ void DemoProject::initialize() {
 
 	// Set flag in Redis
 	redis_.set(KEY_UI_FLAG, to_string(controller_flag_));
+	redis_.set(KEY_UI_BOTTLE, to_string(bottle_flag_));
 }
 
 /**
@@ -54,6 +55,7 @@ void DemoProject::readRedisValues() {
 
 	// Read flag from Redis
 	controller_flag_ = stoi(redis_.get(KEY_UI_FLAG)) > 0;
+	bottle_flag_ = stoi(redis_.get(KEY_UI_BOTTLE));
 
 	// Offset force bias
 	Eigen::VectorXd F_sensor_6d = redis_.getEigenMatrix(OptoForce::KEY_6D_SENSOR_FORCE);
@@ -68,8 +70,13 @@ void DemoProject::readRedisValues() {
 	redis_.setEigenMatrix(OptoForce::KEY_6D_SENSOR_FORCE + "_controller", F_sensor_6d);
 
 	// Get position of shelf
-	pos_shelf_ = redis_.getEigenMatrix(OptiTrack::KEY_POS_RIGID_BODIES) + kBaseToOptiTrackOffset + kShelfHeight;
-	ori_shelf_.coeffs() = redis_.getEigenMatrix(OptiTrack::KEY_ORI_RIGID_BODIES);
+	Eigen::VectorXd pos_ori_shelf(7);
+	pos_ori_shelf.head(3) = redis_.getEigenMatrix(OptiTrack::KEY_POS_RIGID_BODIES) + kBaseToOptiTrackOffset + kShelfHeight;
+	pos_ori_shelf.tail(4) = redis_.getEigenMatrix(OptiTrack::KEY_ORI_RIGID_BODIES);
+	Eigen::VectorXd pos_ori_shelf_filtered = shelf_filter_.update(pos_ori_shelf);
+
+	pos_shelf_ = pos_ori_shelf_filtered.head(3);
+	ori_shelf_.coeffs() = pos_ori_shelf_filtered.tail(4);
 }
 
 /**
@@ -98,13 +105,16 @@ void DemoProject::writeRedisValues() {
 		command_torques_.setZero();
 	}
 
-	// if (controller_flag_) {
 	// Send torques
+	if (!controller_flag_) {
+		command_torques_.setZero();
+	}
 	redis_.setEigenMatrix(KukaIIWA::KEY_COMMAND_TORQUES, command_torques_);
 
 	// Change tool mass
-	redis_.set(KukaIIWA::KEY_TOOL_MASS, to_string(kToolMass[idx_bottle_]));
-	// }
+	if (controller_flag_) {
+		redis_.set(KukaIIWA::KEY_TOOL_MASS, to_string(kToolMass[idx_bottle_]));
+	}
 }
 
 /**
@@ -392,10 +402,10 @@ DemoProject::ControllerStatus DemoProject::freeSpace2Contact() {
 
 	// Stabilize contact
 	double t_curr = timer_.elapsedTime();
-	Eigen::Vector3d F_sensor_grav_comp = F_sensor_ - R_ee_to_base_.transpose() * Eigen::Vector3d(0, 0, kToolMass[idx_bottle_]);
+	Eigen::Vector3d F_sensor_grav_comp = F_sensor_ - R_ee_to_base_.transpose() * Eigen::Vector3d(0, 0, kToolMass[idx_bottle_] - kOptoForceMass);
 	redis_.setEigenMatrix("a", F_sensor_grav_comp);
 	redis_.set("b", to_string(F_sensor_grav_comp.norm()));
-	if (F_sensor_grav_comp.norm() > 4) {
+	if (F_sensor_grav_comp.norm() > 1 && dx_.norm() < 0.01) {
 		return (t_curr - t_init_ >= kContactWait) ? FINISHED : STABILIZING;
 	}
 	t_init_ = t_curr;
@@ -424,6 +434,7 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
 	redis_.setEigenMatrix("F_err", F_err);
 
 	Eigen::Vector3d M_des = R_ee_to_base_ * Eigen::Vector3d(0, 0, 0);
+	M_sensor_(2) = 0;
 	Eigen::Vector3d M_err = -R_ee_to_base_ * M_sensor_ - M_des;
 
 	// Integral error
@@ -492,7 +503,7 @@ DemoProject::ControllerStatus DemoProject::rewindBottleCap() {
 	if (v > 1) v = 1;
 	double dq_screw_err = robot->_dq(6) - v * dq_screw_des;
 
-	Eigen::VectorXd ddq = -K["kv_joint"] * robot->_dq;
+	Eigen::VectorXd ddq = -K["kv_joint_screw"] * robot->_dq;
 	ddq(6) = -K["kv_screw"] * dq_screw_err;
 
 	// Control torques with null space damping
@@ -600,13 +611,15 @@ void DemoProject::runLoop() {
 				if (isnan(robot->_q) || !controller_flag_) continue;
 				cout << "REDIS_SYNCHRONIZATION      => JOINT_SPACE_INITIALIZATION" << endl;
 				controller_state_ = JOINT_SPACE_INITIALIZATION;
-				controller_flag_ = false;
 				break;
 
 			// Initialize robot to default joint configuration - joint space
 			case JOINT_SPACE_INITIALIZATION:
-				if (initializeJointSpace() == FINISHED && controller_flag_) {
-					cout << "JOINT_SPACE_INITIALIZATION => ALIGN_FREE_SPACE" << endl;
+				if (bottle_flag_ > 0 && bottle_flag_ <= kNumBottles) {
+					idx_bottle_ = bottle_flag_ - 1;
+				}
+				if (initializeJointSpace() == FINISHED && bottle_flag_ > 0 && bottle_flag_ <= kNumBottles) {
+					cout << "JOINT_SPACE_INITIALIZATION => GOTO_BOTTLE_VIA_POINT" << endl;
 					controller_state_ = GOTO_BOTTLE_VIA_POINT; //ALIGN_BOTTLE_CAP
 				}
 				break;
@@ -650,6 +663,7 @@ void DemoProject::runLoop() {
 				if (freeSpace2Contact() == FINISHED) {
 					cout << "FREE_SPACE_TO_CONTACT      => ALIGN_BOTTLE_CAP" << endl;
 					controller_state_ = ALIGN_BOTTLE_CAP;
+					t_init_ = timer_.elapsedTime();
 				}
 				break;
 
@@ -676,14 +690,13 @@ void DemoProject::runLoop() {
 					case FINISHED:
 						cout << "Success!! SCREW_BOTTLE_CAP => RELEASE_BOTTLE_CAP" << endl;
 						controller_state_ = RELEASE_BOTTLE_CAP;
-						// t_init_ = timer_.elapsedTime();
 						controller_flag_ = false;
 						redis_.set(KEY_UI_FLAG, to_string(controller_flag_));
 						is_screwing_ = false;
 						break;
 					case FAILED:
-						cout << "Fail.     SCREW_BOTTLE_CAP => REWIND_BOTTLE_CAP" << endl;
-						controller_state_ = REWIND_BOTTLE_CAP;
+						cout << "Fail.     SCREW_BOTTLE_CAP => ALIGN_BOTTLE_CAP" << endl;
+						controller_state_ = ALIGN_BOTTLE_CAP;
 						is_screwing_ = false;
 						break;
 					default:
@@ -697,8 +710,8 @@ void DemoProject::runLoop() {
 				if (releaseBottleCap() == FINISHED) {
 					cout << "RELEASE_BOTTLE_CAP         => JOINT SPACE INITIALIZATION" << endl;
 					controller_state_ = JOINT_SPACE_INITIALIZATION;
-					controller_flag_ = false;
-					idx_bottle_++;
+					bottle_flag_ = 0;
+					redis_.set(KEY_UI_BOTTLE, to_string(bottle_flag_));
 				}
 				break;
 

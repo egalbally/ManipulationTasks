@@ -23,6 +23,7 @@
 // - write:
 // - read:
 const std::string KEY_UI_FLAG = KukaIIWA::KEY_PREFIX + "ui::flag";
+const std::string KEY_UI_BOTTLE = KukaIIWA::KEY_PREFIX + "ui::bottle_number";
 
 Eigen::Matrix3d Matrix3d(double m11, double m12, double m13,
                          double m21, double m22, double m23,
@@ -54,6 +55,10 @@ public:
 		// Initialize force sensor filter
 		F_sensor_6d_filter_.setDimension(6);
 		F_sensor_6d_filter_.setCutoffFrequency(0.01);
+
+		// Initialize optitrack filter
+		shelf_filter_.setDimension(7);
+		shelf_filter_.setCutoffFrequency(0.01);
 	}
 
 	/***** Public functions *****/
@@ -96,7 +101,7 @@ protected:
 	const double kToleranceAlignDx = 0.001;
 
 	const double kMaxVelocity = 0.1;  // Maximum end effector velocity
-	const double kMaxVelocityScrew = 3; // 3 radians per second
+	const double kMaxVelocityScrew = 2; // 3 radians per second
 	const double kMaxVelocityInit = 1; // 1 radian per second
 
 	const int kControlFreq = 1000;         // 1 kHz control loop
@@ -113,10 +118,10 @@ protected:
 	const Eigen::Vector3d kShelfHeight = Eigen::Vector3d(0, 0, 0.11) - kOptiTrackToShelfOffset;
 
 	const std::vector<Eigen::Vector3d> kContactPositionsInShelf = {
-		Eigen::Vector3d(-0.074, -0.005, 0.10),
+		Eigen::Vector3d(-0.074, -0.005, 0.09),
 		Eigen::Vector3d(-0.24,  -0.01,  0.10),
-		Eigen::Vector3d(-0.42, 0.005, 0.075),
-		Eigen::Vector3d(-0.605,  -0.03,  0.1)
+		Eigen::Vector3d(-0.42, 0.005, 0.08),
+		Eigen::Vector3d(-0.605,  -0.025,  0.1)
 	};
 
 	const std::vector<Eigen::Vector3d> kSafetyDistance2Rim = {
@@ -145,18 +150,19 @@ protected:
 	};
 
 	const std::vector<Eigen::Vector3d> kContactPointsInEE = {
-		Eigen::Vector3d(0,-0.035, 0.14),
+		Eigen::Vector3d(0,-0.035, 0.13),
 		Eigen::Vector3d(0,-0.02,  0.15),
-		Eigen::Vector3d(0,-0.055, 0.14),
-		Eigen::Vector3d(0, 0.035, 0.14)
+		Eigen::Vector3d(0,-0.055, 0.13),
+		Eigen::Vector3d(0, 0.035, 0.13)
 	};
 
 	// Tool mass
+	const double kOptoForceMass = 0.3;
 	const std::vector<double> kToolMass={
-		0.55, // medium cap
+		0.40, // medium cap
 		0.42, // small cap
-		0.48, // large cap
-		0.55  // medium cap
+		0.44, // large cap
+		0.44  // medium cap
 	};
 
 
@@ -174,6 +180,7 @@ protected:
 		{"kv_ori",   0.5},
 		{"kp_joint",  15},
 		{"kv_joint",   0},
+		{"kv_joint_screw", 10},
 		{"kp_screw",  15},
 		{"kv_screw",   4},
 
@@ -195,7 +202,7 @@ protected:
 		{"less_damping", 2},
 
 		{"kp_force", 0.5},
-		{"kv_force",   0},
+		{"kv_force",   2},
 		{"ki_force",   1},
 		{"kp_moment",  2}, //3 (for small and medium)
 		{"kv_moment",  1},
@@ -282,6 +289,7 @@ protected:
 	Eigen::Vector3d dPhi_ = Eigen::Vector3d::Zero();
 	Eigen::Vector3d pos_shelf_;
 	Eigen::Quaterniond ori_shelf_;
+	ButterworthFilter shelf_filter_;
 
 	Eigen::Vector3d F_sensor_, M_sensor_, F_x_ee_;
 	ButterworthFilter F_sensor_6d_filter_;
@@ -295,6 +303,7 @@ protected:
 	bool controller_flag_ = false;
 	int idx_bottle_ = 0;
 	bool is_screwing_ = false;
+	int bottle_flag_ = 0;
 
 	// angle between contact surface normal and cap normal
 	// double theta_;
