@@ -82,7 +82,8 @@ protected:
 		ALIGN_BOTTLE_CAP,
 		REWIND_BOTTLE_CAP,
 		SCREW_BOTTLE_CAP,
-		RELEASE_BOTTLE_CAP
+		RELEASE_BOTTLE_CAP,
+		UNWIND_BOTTLE_CAP
 	};
 
 	// Return values from computeControlTorques() methods
@@ -161,8 +162,8 @@ protected:
 	const std::vector<double> kToolMass={
 		0.40, // medium cap
 		0.42, // small cap
-		0.44, // large cap
-		0.44  // medium cap
+		0.45, // large cap
+		0.40  // medium cap
 	};
 
 
@@ -201,8 +202,8 @@ protected:
 		{"more_speed",   2},
 		{"less_damping", 2},
 
-		{"kp_force", 0.5},
-		{"kv_force",   2},
+		{"kp_force", 0.25},
+		{"kv_force",   3},
 		{"ki_force",   1},
 		{"kp_moment",  2}, //3 (for small and medium)
 		{"kv_moment",  1},
@@ -251,6 +252,7 @@ protected:
 	ControllerStatus screwBottleCap();
 	ControllerStatus rewindBottleCap();
 	ControllerStatus releaseBottleCap();
+	ControllerStatus unwindBottleCap();
 
 	Eigen::Vector3d estimatePivotPoint();
 
@@ -264,7 +266,7 @@ protected:
 
 	// Timer
 	LoopTimer timer_;
-	double t_init_;
+	double t_init_ = 0;
 
 	// State machine
 	ControllerState controller_state_;

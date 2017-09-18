@@ -405,7 +405,7 @@ DemoProject::ControllerStatus DemoProject::freeSpace2Contact() {
 	Eigen::Vector3d F_sensor_grav_comp = F_sensor_ - R_ee_to_base_.transpose() * Eigen::Vector3d(0, 0, kToolMass[idx_bottle_] - kOptoForceMass);
 	redis_.setEigenMatrix("a", F_sensor_grav_comp);
 	redis_.set("b", to_string(F_sensor_grav_comp.norm()));
-	if (F_sensor_grav_comp.norm() > 1 && dx_.norm() < 0.01) {
+	if (F_sensor_grav_comp.norm() > 2 && dx_.norm() < 0.01) {
 		return (t_curr - t_init_ >= kContactWait) ? FINISHED : STABILIZING;
 	}
 	t_init_ = t_curr;
@@ -581,6 +581,42 @@ DemoProject::ControllerStatus DemoProject::releaseBottleCap() {
 }
 
 /**
+ * DemoProject::unwindBottleCap()
+ * ----------------------------------------------------
+ * Rewind bottle cap.
+ */
+DemoProject::ControllerStatus DemoProject::unwindBottleCap() {
+	// // Position - set xdes below the current position in z to apply a constant downward force
+	// robot->position(x_des_, "link6", Eigen::Vector3d(0,0,0.05) + kPosEndEffector);
+	// Eigen::Vector3d x_err = x_ - x_des_;
+	// Eigen::Vector3d dx_err = dx_ - dx_des_;
+	// Eigen::Vector3d ddx = -kp_pos_ * x_err - kv_pos_ * dx_err;
+
+	// Finish if the robot has converged to the last joint limit (+15deg)
+	double q_screw_err = robot->_q(6) - (-KukaIIWA::JOINT_LIMITS(6) + 15.0 * M_PI / 180.0);
+
+	//Joint space velocity saturation
+	double dq_screw_des = -(K["kp_screw"] / K["kv_screw"]) * q_screw_err;
+	double v = kMaxVelocityScrew / abs(dq_screw_des);
+	if (v > 1) v = 1;
+	double dq_screw_err = robot->_dq(6) - v * dq_screw_des;
+
+	Eigen::VectorXd ddq = -K["kv_joint_screw"] * robot->_dq;
+	ddq(6) = -K["kv_screw"] * dq_screw_err;
+
+	command_torques_ = robot->_M * ddq;
+
+	// Stabilize rewind
+	double t_curr = timer_.elapsedTime();
+	if (abs(q_screw_err) < 0.1 && w_.norm() < 0.01) {
+		return (t_curr - t_init_ >= kAlignmentWait) ? FINISHED : STABILIZING;
+	}
+	t_init_ = t_curr;
+
+	return RUNNING;
+}
+
+/**
  * public DemoProject::runLoop()
  * -----------------------------
  * DemoProject state machine
@@ -663,7 +699,6 @@ void DemoProject::runLoop() {
 				if (freeSpace2Contact() == FINISHED) {
 					cout << "FREE_SPACE_TO_CONTACT      => ALIGN_BOTTLE_CAP" << endl;
 					controller_state_ = ALIGN_BOTTLE_CAP;
-					t_init_ = timer_.elapsedTime();
 				}
 				break;
 
@@ -708,10 +743,17 @@ void DemoProject::runLoop() {
 
 			case RELEASE_BOTTLE_CAP:
 				if (releaseBottleCap() == FINISHED) {
-					cout << "RELEASE_BOTTLE_CAP         => JOINT SPACE INITIALIZATION" << endl;
-					controller_state_ = JOINT_SPACE_INITIALIZATION;
+					cout << "RELEASE_BOTTLE_CAP         => UNWIND_BOTTLE_CAP" << endl;
+					controller_state_ = UNWIND_BOTTLE_CAP;
 					bottle_flag_ = 0;
 					redis_.set(KEY_UI_BOTTLE, to_string(bottle_flag_));
+				}
+				break;
+
+			case UNWIND_BOTTLE_CAP:
+				if (unwindBottleCap() == FINISHED) {
+					cout << "UNWIND_BOTTLE_CAP          => JOINT_SPACE_INITIALIZATION" << endl;
+					controller_state_ = JOINT_SPACE_INITIALIZATION;
 				}
 				break;
 
