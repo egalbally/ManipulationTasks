@@ -106,9 +106,9 @@ void DemoProject::writeRedisValues() {
 	}
 
 	// Send torques
-	if (!controller_flag_) {
-		command_torques_.setZero();
-	}
+	// if (!controller_flag_) {
+	// 	command_torques_.setZero();
+	// }
 	redis_.setEigenMatrix(KukaIIWA::KEY_COMMAND_TORQUES, command_torques_);
 
 	// Change tool mass
@@ -372,11 +372,11 @@ DemoProject::ControllerStatus DemoProject::freeSpace2Contact() {
 
 	// Position
 	x_des_ = ori_shelf_.matrix() * kContactPositionsInShelf[idx_bottle_] + pos_shelf_;
-	Eigen::Vector3d force_axis = ori_shelf_.matrix() * kSafetyDistance2Rim[idx_bottle_];
+	Eigen::Vector3d force_axis = -ori_shelf_.matrix() * kSafetyDistance2Rim[idx_bottle_];
 	force_axis /= force_axis.norm();
 	Eigen::Vector3d x_err = x_ - x_des_;
 	x_err = (Eigen::Matrix3d::Identity() - force_axis * force_axis.transpose()) * x_err;
-	x_err += K["kp_free_to_contact"] * force_axis;
+	x_err += -K["kp_free_to_contact"] * force_axis;
 
 	// Velocity saturation
 	dx_des_ = -K["kp_pos_free"]/ K["kv_pos_free"] * x_err;
@@ -405,7 +405,10 @@ DemoProject::ControllerStatus DemoProject::freeSpace2Contact() {
 	Eigen::Vector3d F_sensor_grav_comp = F_sensor_ - R_ee_to_base_.transpose() * Eigen::Vector3d(0, 0, kToolMass[idx_bottle_] - kOptoForceMass);
 	redis_.setEigenMatrix("a", F_sensor_grav_comp);
 	redis_.set("b", to_string(F_sensor_grav_comp.norm()));
-	if (F_sensor_grav_comp.norm() > 2 && dx_.norm() < 0.01) {
+	redis_.set("c", to_string(F_sensor_grav_comp.dot(R_ee_to_base_.transpose() * force_axis)));
+	redis_.set("d", to_string(F_sensor_.dot(R_ee_to_base_.transpose() * force_axis)));
+	redis_.setEigenMatrix("e", R_ee_to_base_.transpose() * force_axis);
+	if (F_sensor_grav_comp.dot(R_ee_to_base_.transpose() * force_axis) < -2.5 && dx_.norm() < 0.01) {
 		return (t_curr - t_init_ >= kContactWait) ? FINISHED : STABILIZING;
 	}
 	t_init_ = t_curr;
@@ -471,8 +474,10 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
 
 	// Stabilize alignment
 	double t_curr = timer_.elapsedTime();
-	if (M_sensor_.norm() <= 0.15 && w_.norm() < 0.01 && F_sensor_(2) < -1.0) {
-		F_x_ee_ = R_ee_to_base_ * F_x;
+	Eigen::Vector3d w_xy = R_ee_to_base_.transpose() * w_;
+	w_xy(2) = 0;
+	if (M_sensor_.norm() <= 0.1 && F_err.norm() <= 0.2 && w_xy.norm() < 0.01 && F_sensor_(2) < -1.0) {
+		F_x_ee_ = R_ee_to_base_.transpose() * F_x;
 		F_x_ee_(0) = 0;
 		F_x_ee_(1) = 0;
 		return (t_curr - t_init_ >= kAlignmentWait) ? FINISHED : STABILIZING;
@@ -514,7 +519,7 @@ DemoProject::ControllerStatus DemoProject::rewindBottleCap() {
 
 	// Stabilize rewind
 	double t_curr = timer_.elapsedTime();
-	if (abs(q_screw_err) < 0.1 && w_.norm() < 0.01) {
+	if (abs(q_screw_err) < 0.2 && w_.norm() < 0.01) {
 		return (t_curr - t_init_ >= kAlignmentWait) ? FINISHED : STABILIZING;
 	}
 	t_init_ = t_curr;
@@ -559,6 +564,7 @@ DemoProject::ControllerStatus DemoProject::screwBottleCap() {
 		if (M_sensor_(2) < -0.5) {
 			return FINISHED;
 		}
+		if (idx_bottle_ == 1 && R_ee_to_base_.col(2).dot(Eigen::Vector3d(0,0,-1)) > 0.98) return FINISHED;
 		return (t_curr - t_init_ >= kAlignmentWait) ? FAILED : STABILIZING;
 	}
 	t_init_ = t_curr;
@@ -572,7 +578,24 @@ DemoProject::ControllerStatus DemoProject::screwBottleCap() {
  * Release bottle cap.
  */
 DemoProject::ControllerStatus DemoProject::releaseBottleCap() {
-	command_torques_.setZero();
+		// Finish if the robot has converged to the last joint limit (+15deg)
+	double q_screw_err = robot->_q(6) - (KukaIIWA::JOINT_LIMITS(6) - 15.0 * M_PI / 180.0);
+	redis_.set(KukaIIWA::KEY_PREFIX + "tasks::q_screw_err", std::to_string(q_screw_err));
+
+	//Joint space velocity saturation
+	double dq_screw_des = -(K["kp_screw"] / K["kv_screw"]) * q_screw_err;
+	double v = kMaxVelocityScrew / abs(dq_screw_des);
+	if (v > 1) v = 1;
+	double dq_screw_err = robot->_dq(6) - v * dq_screw_des;
+
+	Eigen::VectorXd ddq = Eigen::VectorXd::Zero(7);
+	ddq(6) = -K["kv_screw"] * dq_screw_err;
+
+	// Control torques
+	// Eigen::Vector3d F_x = Lambda_x_ * ddx;
+	Eigen::Vector3d F_x = R_ee_to_base_ * F_x_ee_;
+	command_torques_ = robot->_M * ddq;
+
 	return controller_flag_ ? FINISHED : RUNNING;
 
 	// gripper_pos_des_ = SchunkGripper::POSITION_MIN;
@@ -705,19 +728,26 @@ void DemoProject::runLoop() {
 			/************   CONTROL CONTACT   **************/
 
 			case ALIGN_BOTTLE_CAP:
-				if (alignBottleCapForce() == FINISHED) {  //alignBottleCapExponentialDamping //alignBottleCap //alignBottleCapSimple
-					op_point_ << 0, 0, 0.12;
+				if (alignBottleCapForce() == FINISHED) {
 					cout << "ALIGN_BOTTLE_CAP           => REWIND_BOTTLE_CAP" << endl;
 					controller_state_ = REWIND_BOTTLE_CAP;
 				}
 				break;
 
 			case REWIND_BOTTLE_CAP:
+				is_screwing_ = true;
 				if (rewindBottleCap() == FINISHED) {
-					cout << "REWIND_BOTTLE_CAP          => SCREW_BOTTLE_CAP" << endl;
+					cout << "REWIND_BOTTLE_CAP          => REALIGN_BOTTLE_CAP" << endl;
 					controller_state_ = SCREW_BOTTLE_CAP;
+					is_screwing_ = false;
 				}
 				break;
+
+			case REALIGN_BOTTLE_CAP:
+				if (alignBottleCapForce() == FINISHED) {
+					cout << "REALIGN_BOTTLE_CAP           => SCREW_BOTTLE_CAP" << endl;
+					controller_state_ = SCREW_BOTTLE_CAP;
+				}
 
 			case SCREW_BOTTLE_CAP:
 				is_screwing_ = true;
@@ -743,8 +773,8 @@ void DemoProject::runLoop() {
 
 			case RELEASE_BOTTLE_CAP:
 				if (releaseBottleCap() == FINISHED) {
-					cout << "RELEASE_BOTTLE_CAP         => UNWIND_BOTTLE_CAP" << endl;
-					controller_state_ = UNWIND_BOTTLE_CAP;
+					cout << "RELEASE_BOTTLE_CAP         => JOINT_SPACE_INITIALIZATION" << endl;
+					controller_state_ = JOINT_SPACE_INITIALIZATION;
 					bottle_flag_ = 0;
 					redis_.set(KEY_UI_BOTTLE, to_string(bottle_flag_));
 				}

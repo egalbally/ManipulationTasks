@@ -81,6 +81,7 @@ protected:
 		FREE_SPACE_TO_CONTACT,
 		ALIGN_BOTTLE_CAP,
 		REWIND_BOTTLE_CAP,
+		REALIGN_BOTTLE_CAP,
 		SCREW_BOTTLE_CAP,
 		RELEASE_BOTTLE_CAP,
 		UNWIND_BOTTLE_CAP
@@ -102,7 +103,7 @@ protected:
 	const double kToleranceAlignDx = 0.001;
 
 	const double kMaxVelocity = 0.1;  // Maximum end effector velocity
-	const double kMaxVelocityScrew = 2; // 3 radians per second
+	const double kMaxVelocityScrew = 1.5; // 3 radians per second
 	const double kMaxVelocityInit = 1; // 1 radian per second
 
 	const int kControlFreq = 1000;         // 1 kHz control loop
@@ -120,7 +121,7 @@ protected:
 
 	const std::vector<Eigen::Vector3d> kContactPositionsInShelf = {
 		Eigen::Vector3d(-0.074, -0.005, 0.09),
-		Eigen::Vector3d(-0.24,  -0.01,  0.10),
+		Eigen::Vector3d(-0.25,  -0.01,  0.12),
 		Eigen::Vector3d(-0.42, 0.005, 0.08),
 		Eigen::Vector3d(-0.605,  -0.025,  0.1)
 	};
@@ -152,7 +153,7 @@ protected:
 
 	const std::vector<Eigen::Vector3d> kContactPointsInEE = {
 		Eigen::Vector3d(0,-0.035, 0.13),
-		Eigen::Vector3d(0,-0.02,  0.15),
+		Eigen::Vector3d(0,-0.02,  0.13),
 		Eigen::Vector3d(0,-0.055, 0.13),
 		Eigen::Vector3d(0, 0.035, 0.13)
 	};
@@ -161,7 +162,7 @@ protected:
 	const double kOptoForceMass = 0.3;
 	const std::vector<double> kToolMass={
 		0.40, // medium cap
-		0.42, // small cap
+		0.38, // small cap
 		0.45, // large cap
 		0.40  // medium cap
 	};
