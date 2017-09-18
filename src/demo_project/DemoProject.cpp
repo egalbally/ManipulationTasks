@@ -560,11 +560,12 @@ DemoProject::ControllerStatus DemoProject::screwBottleCap() {
 
 	// Check screw
 	double t_curr = timer_.elapsedTime();
-	if (abs(q_screw_err) < 1) {
+	if (abs(q_screw_err) < 1.5) {
 		if (M_sensor_(2) < -0.5) {
 			return FINISHED;
 		}
-		if (idx_bottle_ == 1 && R_ee_to_base_.col(2).dot(Eigen::Vector3d(0,0,-1)) > 0.98) return FINISHED;
+		if (idx_bottle_ == 1 && x_(2) < 0.22 && R_ee_to_base_.col(2).dot(Eigen::Vector3d(0,0,-1)) > 0.98) return FINISHED;
+		if (idx_bottle_ == 2 && x_(2) < 0.181 && R_ee_to_base_.col(2).dot(Eigen::Vector3d(0,0,-1)) > 0.98) return FINISHED;
 		return (t_curr - t_init_ >= kAlignmentWait) ? FAILED : STABILIZING;
 	}
 	t_init_ = t_curr;
