@@ -3,6 +3,14 @@
 #include <iostream>
 
 #include <signal.h>
+
+// ----------- for the new sai setup
+#include "Sai2Model.h"
+#include "Sai2Graphics.h"
+#include "Sai2Simulation.h"
+#include <dynamics3d.h>
+// ---------------
+
 static volatile bool g_runloop = true;
 void stop(int) { g_runloop = false; }
 
@@ -813,6 +821,12 @@ void DemoProject::runLoop() {
 }
 
 int main(int argc, char** argv) {
+
+	// ---------- Names to use for the new SAI-2 setup
+	// Sai2Graphics::Sai2Graphics
+	// Sai2Model::Sai2Model
+	// Simulation::Sai2Simulation 
+	// -----------
 
 	// Argument 0: executable name
 	// Argument 1: <path-to-world.urdf>

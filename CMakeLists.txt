@@ -16,9 +16,34 @@ include_directories(${PROJECT_SOURCE_DIR}/src)
 
 # Set common dependencies
 
+# - SAI2-SIMULATION. TODO: this should not be needed. something fishy.
+find_package(SAI2-SIMULATION REQUIRED)
+include_directories(${SAI2-SIMULATION_INCLUDE_DIRS})
+add_definitions(${SAI2-SIMULATION_DEFINITIONS})
+
 # - SAI2-COMMON
 find_package(SAI2-COMMON REQUIRED)
 include_directories(${SAI2-COMMON_INCLUDE_DIRS})
+add_definitions(${SAI2-COMMON_DEFINITIONS})
+
+# - SAI2-MODEL
+find_package(SAI2-MODEL REQUIRED)
+include_directories(${SAI2-MODEL_INCLUDE_DIRS})
+add_definitions(${SAI2-MODEL_DEFINITIONS})
+
+# - SAI2-GRAPHICS
+find_package(SAI2-GRAPHICS REQUIRED)
+include_directories(${SAI2-GRAPHICS_INCLUDE_DIRS})
+add_definitions(${SAI2-GRAPHICS_DEFINITIONS})
+
+# - SAI2-URDF
+find_package(SAI2-URDF REQUIRED)
+include_directories(${SAI2-URDF_INCLUDE_DIRS})
+add_definitions(${SAI2-URDF_DEFINITIONS})
+
+# - SAI2-COMMON
+#find_package(SAI2-COMMON REQUIRED)
+#include_directories(${SAI2-COMMON_INCLUDE_DIRS})
 
 # - hiredis
 find_library(HIREDIS_LIBRARY hiredis)
@@ -38,6 +63,11 @@ set(CS225A_COMMON_LIBRARIES
 	${SAI2-COMMON_LIBRARIES}
 	${HIREDIS_LIBRARY}
 	${JSONCPP_LIBRARY}
+	${SAI2-COMMON_LIBRARIES}
+	${SAI2-GRAPHICS_LIBRARIES}
+	${SAI2-MODEL_LIBRARIES}
+	${SAI2-SIMULATION_LIBRARIES}
+	${SAI2-URDF_LIBRARIES}
 )
 
 # Add apps
@@ -56,10 +86,8 @@ add_subdirectory(src/simulation)
 # add_subdirectory(src/hw3)
 add_subdirectory(src/demo_project)
 
-add_subdirectory(src/optitrack)
+#add_subdirectory(src/kuka_iiwa)
 add_subdirectory(src/optoforce)
 add_subdirectory(src/schunk_gripper)
 add_subdirectory(src/kuka_iiwa)
-# add_subdirectory(src/kinova_jaco)
-# add_subdirectory(src/sawyer)
-# add_subdirectory(src/puma)
+
