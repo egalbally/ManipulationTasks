@@ -121,7 +121,7 @@ protected:
 
 	const std::vector<Eigen::Vector3d> kContactPositionsInShelf = {
 		Eigen::Vector3d(-0.074, -0.005, 0.09),
-		Eigen::Vector3d(-0.25,  -0.01,  0.12),
+		Eigen::Vector3d(-0.25,  -0.01,  0.115),
 		Eigen::Vector3d(-0.42, 0.005, 0.08),
 		Eigen::Vector3d(-0.605,  -0.04,  0.1)
 	};
