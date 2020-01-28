@@ -5,8 +5,8 @@
 
 #include <string>
 
-#include <Eigen/Core>
-#include <Eigen/Dense>
+#include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/Dense>
 
 namespace KukaIIWA {
 

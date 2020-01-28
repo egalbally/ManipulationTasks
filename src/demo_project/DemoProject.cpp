@@ -7,7 +7,7 @@
 // ----------- for the new sai setup
 #include "Sai2Model.h"
 #include "Sai2Graphics.h"
-#include "Sai2Simulation.h"
+// #include "Sai2Simulation.h"
 #include <dynamics3d.h>
 // ---------------
 
@@ -486,6 +486,7 @@ DemoProject::ControllerStatus DemoProject::alignBottleCapForce() {
 	w_xy(2) = 0;
 	if (M_sensor_.norm() <= 0.1 && F_err.norm() <= 0.2 && w_xy.norm() < 0.01 && F_sensor_(2) < -1.0) {
 		F_x_ee_ = R_ee_to_base_.transpose() * F_x;
+		// for the next step (screwing) we just want a component of force in z direction, so we zero out the others
 		F_x_ee_(0) = 0;
 		F_x_ee_(1) = 0;
 		return (t_curr - t_init_ >= kAlignmentWait) ? FINISHED : STABILIZING;

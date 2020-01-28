@@ -8,7 +8,7 @@
 #ifndef REDIS_CLIENT_H
 #define REDIS_CLIENT_H
 
-#include <Eigen/Core>
+#include <eigen3/Eigen/Core>
 #include <hiredis/hiredis.h>
 #include <string>
 #include <vector>

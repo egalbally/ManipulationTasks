@@ -15,9 +15,18 @@
 #include <thread>
 
 // External
-#include <Eigen/Core>
+#include <eigen3/Eigen/Core>
 #include <hiredis/hiredis.h>
-#include <model/ModelInterface.h>
+// ----------- for the new sai setup
+#include "Sai2Model.h"
+// #include "Sai2Graphics.h"
+// #include "Sai2Simulation.h"
+#include <dynamics3d.h>
+// ---------------
+
+using namespace Eigen;
+
+// #include <model/ModelInterface.h>
 
 // Redis keys:
 // - write:
@@ -37,7 +46,8 @@ class DemoProject {
 
 public:
 
-	DemoProject(std::shared_ptr<Model::ModelInterface> robot)
+	// DemoProject(std::shared_ptr<Model::ModelInterface> robot)
+	DemoProject(Sai2Model::Sai2Model* robot)
 	: robot(robot),
 	  controller_state_(REDIS_SYNCHRONIZATION)
 	{
@@ -260,7 +270,8 @@ protected:
 	/***** Member variables *****/
 
 	// Robot
-	const std::shared_ptr<Model::ModelInterface> robot;
+	// const std::shared_ptr<Model::ModelInterface> robot;
+	const Sai2Model::Sai2Model* robot;
 
 	// Redis
 	RedisClient redis_;

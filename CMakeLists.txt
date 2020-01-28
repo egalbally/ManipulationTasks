@@ -15,6 +15,11 @@ set(CS225A_COMMON_SOURCE
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
 # Set common dependencies
+# - chai3d
+find_package (CHAI3D REQUIRED)
+include_directories(${CHAI3D_INCLUDE_DIRS})
+link_directories (${CHAI3D_LIBRARY_DIRS})
+add_definitions (${CHAI3D_DEFINITIONS})
 
 # - SAI2-SIMULATION. TODO: this should not be needed. something fishy.
 find_package(SAI2-SIMULATION REQUIRED)
@@ -42,8 +47,8 @@ include_directories(${SAI2-URDF_INCLUDE_DIRS})
 add_definitions(${SAI2-URDF_DEFINITIONS})
 
 # - SAI2-COMMON
-#find_package(SAI2-COMMON REQUIRED)
-#include_directories(${SAI2-COMMON_INCLUDE_DIRS})
+find_package(SAI2-COMMON REQUIRED)
+include_directories(${SAI2-COMMON_INCLUDE_DIRS})
 
 # - hiredis
 find_library(HIREDIS_LIBRARY hiredis)
@@ -78,8 +83,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE        ${PROJECT_SOURCE_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${PROJECT_SOURCE_DIR}/bin)
 set(CS225A_BINARY_DIR ${PROJECT_SOURCE_DIR}/bin)
 
-add_subdirectory(src/visualization)
-add_subdirectory(src/simulation)
+# add_subdirectory(src/visualization)
+# add_subdirectory(src/simulation)
 # add_subdirectory(src/hw0)
 # add_subdirectory(src/hw1)
 # add_subdirectory(src/hw2)
@@ -87,7 +92,7 @@ add_subdirectory(src/simulation)
 add_subdirectory(src/demo_project)
 
 #add_subdirectory(src/kuka_iiwa)
-add_subdirectory(src/optoforce)
-add_subdirectory(src/schunk_gripper)
-add_subdirectory(src/kuka_iiwa)
+# add_subdirectory(src/optoforce)
+#add_subdirectory(src/schunk_gripper)
+#add_subdirectory(src/kuka_iiwa)
 

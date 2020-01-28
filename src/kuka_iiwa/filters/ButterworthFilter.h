@@ -26,7 +26,7 @@ Author: Brian Soe <bsoe@stanford.edu>
 #include <math.h>
 #include <stdexcept>
 #include <iostream>
-#include <Eigen/Dense>
+#include <eigen3/Eigen/Dense>
 
 namespace sai {
 
